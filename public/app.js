@@ -22,8 +22,10 @@ async function checkStatus() {
   try {
     const res = await fetch('/api/status');
     const data = await res.json();
-    providerStatus.textContent = data.provider === 'mock' ? 'Mock brain connected' : 'Qwen connected';
-    modelStatus.textContent = `provider=${data.provider} · model=${data.model} · router=${data.routerModel}`;
+    const culture = data.knowledge?.cultural?.documents ?? '?';
+    const business = data.knowledge?.business?.documents ?? '?';
+    providerStatus.textContent = data.provider === 'mock' ? 'Mock brain connected' : 'Local Qwen connected';
+    modelStatus.textContent = `provider=${data.provider} · model=${data.model} · router=${data.routerModel} · culture=${culture} docs · business=${business} docs`;
   } catch (error) {
     providerStatus.textContent = 'Local backend unavailable';
     modelStatus.textContent = error.message;
@@ -39,9 +41,7 @@ reset.addEventListener('click', () => {
 });
 
 downloadTrace.addEventListener('click', () => { window.location.href = '/api/runs/latest'; });
-input.addEventListener('keydown', event => {
-  if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); form.requestSubmit(); }
-});
+input.addEventListener('keydown', event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); form.requestSubmit(); } });
 
 form.addEventListener('submit', async event => {
   event.preventDefault();
