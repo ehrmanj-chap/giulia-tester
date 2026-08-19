@@ -6,7 +6,9 @@ import { createProvider } from '../lib/provider.mjs';
 import { createGiulia } from '../lib/giulia.mjs';
 
 loadDotEnv();
+const requestedProvider = process.argv.find(arg => arg.startsWith('--provider='))?.split('=')[1];
 const config = getConfig();
+if (requestedProvider) config.provider = requestedProvider;
 const provider = createProvider(config);
 const giulia = createGiulia({ config, provider });
 const cases = JSON.parse(fs.readFileSync(path.join(config.rootDir, 'evals', 'cases.json'), 'utf8'));
@@ -18,13 +20,31 @@ for (const testCase of cases) {
   const t0 = Date.now();
   try {
     const result = await giulia.chat(testCase.messages);
-    results.push({ id: testCase.id, expectedRoute: testCase.expectedRoute, actualRoute: result.route, routePass: result.route === testCase.expectedRoute, reply: result.reply, runId: result.trace.runId, elapsedMs: Date.now() - t0 });
+    results.push({
+      id: testCase.id,
+      expectedRoute: testCase.expectedRoute,
+      actualRoute: result.route,
+      routePass: result.route === testCase.expectedRoute,
+      routeConfidence: result.trace.route?.confidence ?? null,
+      routeReason: result.trace.route?.reason ?? null,
+      reply: result.reply,
+      runId: result.trace.runId,
+      elapsedMs: Date.now() - t0
+    });
   } catch (error) {
     results.push({ id: testCase.id, expectedRoute: testCase.expectedRoute, error: error.message, routePass: false, elapsedMs: Date.now() - t0 });
   }
 }
 
-const report = { started, finished: new Date().toISOString(), provider: provider.name, model: activeModel, passedRoutes: results.filter(r => r.routePass).length, total: results.length, results };
+const report = {
+  started,
+  finished: new Date().toISOString(),
+  provider: provider.name,
+  model: activeModel,
+  passedRoutes: results.filter(r => r.routePass).length,
+  total: results.length,
+  results
+};
 fs.mkdirSync(config.evalResultsDir, { recursive: true });
 const name = `eval-${new Date().toISOString().replace(/[:.]/g, '-')}-${provider.name}.json`;
 const file = path.join(config.evalResultsDir, name);
