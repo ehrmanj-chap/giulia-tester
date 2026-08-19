@@ -1,0 +1,37 @@
+name: Manual Giulia Eval
+
+on:
+  workflow_dispatch:
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      GIULIA_PROVIDER: qwen
+      DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+      QWEN_BASE_URL: ${{ secrets.QWEN_BASE_URL }}
+      QWEN_MODEL: ${{ vars.QWEN_MODEL || 'qwen3.7-max' }}
+      QWEN_ROUTER_MODEL: ${{ vars.QWEN_ROUTER_MODEL || vars.QWEN_MODEL || 'qwen3.7-max' }}
+      GIULIA_TRACE_WRITES: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Unit tests with mock provider
+        run: npm test
+        env:
+          GIULIA_PROVIDER: mock
+      - name: Run Qwen eval suite
+        run: npm run eval:qwen
+      - name: Upload forensic eval bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: giulia-eval-results
+          path: |
+            eval-results/
+            runs/
+          if-no-files-found: warn
