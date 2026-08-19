@@ -15,6 +15,9 @@ const provider = createProvider(config);
 const giulia = createGiulia({ config, provider });
 const publicDir = path.join(rootDir, 'public');
 
+const activeModel = config.provider === 'ollama' ? config.ollama.model : config.qwen.model;
+const activeRouterModel = config.provider === 'ollama' ? config.ollama.routerModel : config.qwen.routerModel;
+
 const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8' };
 
 function sendJson(res, status, payload) {
@@ -46,11 +49,18 @@ function serveStatic(req, res) {
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-    if (req.method === 'GET' && url.pathname === '/api/status') return sendJson(res, 200, { ok: true, provider: provider.name, model: config.qwen.model, routerModel: config.qwen.routerModel, qwenConfigured: Boolean(config.qwen.apiKey && config.qwen.baseUrl), diagnostics: config.devDiagnostics });
+    if (req.method === 'GET' && url.pathname === '/api/status') return sendJson(res, 200, {
+      ok: true,
+      provider: provider.name,
+      model: activeModel,
+      routerModel: activeRouterModel,
+      endpoint: config.provider === 'ollama' ? config.ollama.endpoint : undefined,
+      diagnostics: config.devDiagnostics
+    });
     if (req.method === 'POST' && url.pathname === '/api/chat') {
       const body = JSON.parse(await readBody(req) || '{}');
       const result = await giulia.chat(body.messages);
-      const payload = { reply: result.reply, route: result.route, model: config.qwen.model, runId: result.trace.runId };
+      const payload = { reply: result.reply, route: result.route, model: activeModel, runId: result.trace.runId };
       if (config.devDiagnostics) payload.diagnostics = { route: result.trace.route, calls: result.trace.calls.map(call => ({ role: call.role, model: call.model, latencyMs: call.latencyMs, usage: call.usage })), promptMeta: result.trace.promptMeta, knowledgeMeta: result.trace.knowledgeMeta };
       return sendJson(res, 200, payload);
     }
@@ -71,6 +81,7 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(config.port, config.host, () => {
   console.log(`Giulia Local listening on http://${config.host}:${config.port}`);
-  console.log(`Provider: ${provider.name}${provider.name === 'qwen' ? ` (${config.qwen.model})` : ''}`);
+  console.log(`Provider: ${provider.name} (${activeModel})`);
+  if (provider.name === 'ollama') console.log(`Ollama: ${config.ollama.endpoint} · ctx=${config.ollama.numCtx} · keep_alive=${config.ollama.keepAlive}`);
   console.log('No web-search or browsing tools are exposed to Giulia.');
 });
