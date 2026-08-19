@@ -9,9 +9,19 @@ User → Router Giulia
        └─ Both → Cultural + Business → synthesis
 ```
 
+## Current lab state
+
+**Router Giulia is live. Cultural Giulia is live. Business Giulia is scaffolded but intentionally has no knowledge corpus yet.**
+
+The local server detects corpus availability automatically:
+- Cultural route + Culture corpus present → retrieve evidence and answer.
+- Business route + Business corpus absent → report the missing internal evidence layer instead of letting an empty specialist hallucinate.
+- Both route while Business is absent → answer the Cultural portion and mark the result incomplete for internal testing.
+- Once Business documents are added, the full `both` path automatically calls both specialists and synthesis.
+
 ## Riverbot-style Qwen setup
 
-Giulia now mirrors the local CHRONEBBI/Riverbot arrangement: Ollama runs Qwen on your machine and Giulia talks to Ollama's local chat endpoint.
+Giulia mirrors the local CHRONEBBI/Riverbot arrangement: Ollama runs Qwen on your machine and Giulia talks to Ollama's local chat endpoint.
 
 Default lab configuration:
 
@@ -23,7 +33,7 @@ context: 8192
 keep_alive: 30m
 ```
 
-No API key is required. The browser talks only to the localhost Giulia server; the Giulia server talks only to local Ollama. No web-search, browsing, URL-fetch, or arbitrary tool capability is exposed to any Giulia role.
+No API key is required. The browser talks only to the localhost Giulia server; the Giulia server talks only to local Ollama. No web-search, browsing, URL-fetch, or arbitrary tool capability is exposed to Giulia.
 
 ## Quick start
 
@@ -51,43 +61,38 @@ ollama run qwen3.5:9b
 
 If that works, Giulia should be able to reach the same model through `http://localhost:11434/api/chat`.
 
-## Mock mode
+## Knowledge retrieval
 
-To test the whole application without running Qwen:
+Cultural Giulia currently has the 25-document approved Culture corpus.
 
-```powershell
-$env:GIULIA_PROVIDER='mock'
-npm start
-```
+The corpus is expanded into individual source documents, chunked locally, and ranked lexically for each conversation turn. Only the best relevant passages are placed in Qwen's context. No embeddings service, vector database, external search, or internet retrieval is required.
 
-Or set `GIULIA_PROVIDER=mock` in `.env`.
+Retrieval and model-call evidence are written into the forensic trace so we can inspect exactly which source chunks reached Qwen.
 
-## Prompts and KB
+## Prompts
 
-- `prompts/core.md`
-- `prompts/router.md`
-- `prompts/cultural.md`
-- `prompts/business.md`
-- `prompts/synthesis.md`
-- `knowledge/cultural/`
-- `knowledge/business/`
-
-Current KB loading is intentionally simple: readable text files are concatenated into the specialist context. Once the real corpus arrives, this layer can be replaced with indexed retrieval without changing the visible Giulia architecture.
+- `prompts/core.md` — one public Giulia identity, shared voice, evidence boundary, no-web rule
+- `prompts/router.md` — Cultural / Business / Both / out-of-scope routing contract
+- `prompts/cultural.md` — Cultural Giulia behavior and grounding protocol
+- `prompts/business.md` — Business Giulia behavior; corpus arrives next
+- `prompts/synthesis.md` — seam-hiding merge for true Both questions
 
 ## Forensic traces
 
-Every local chat run can write a JSON trace to `runs/`. Traces record conversation input, route, model calls/outputs, prompt and KB hashes, source filenames, timing/usage metadata, and the final visible answer. They never record API keys.
+Every local chat run can write a JSON trace to `runs/`. Traces record conversation input, route, model calls/outputs, prompt and KB hashes, retrieved source chunks, timing/usage metadata, and the final visible answer. They never record API keys.
 
 ## Evaluation
 
-Mock plumbing suite:
+Run the local non-Qwen tests:
 
 ```powershell
 npm test
 npm run eval:mock
 ```
 
-Real local Qwen suite:
+The current suite checks Culture retrieval, route boundaries, multi-turn routing, out-of-scope behavior, and the Culture-only bootstrap state.
+
+Run the same router suite against real local Qwen:
 
 ```powershell
 npm run eval:ollama
@@ -97,4 +102,4 @@ Reports are saved in `eval-results/`; per-run evidence is saved in `runs/`. Thos
 
 ## Optional hosted Qwen
 
-The old hosted-Qwen adapter remains in the codebase for later experiments, but it is not needed for intra-lab testing and is no longer the default.
+The hosted-Qwen adapter remains in the codebase for later experiments, but it is not needed for intra-lab testing and is not the default.
