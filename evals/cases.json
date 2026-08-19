@@ -1,0 +1,8 @@
+[
+  {"id":"culture-language-family","messages":[{"role":"user","content":"What language family does Italian belong to, and why does that matter culturally?"}],"expectedRoute":"cultural"},
+  {"id":"business-gdp","messages":[{"role":"user","content":"What should an intern understand about Italy's GDP and business environment?"}],"expectedRoute":"business"},
+  {"id":"mixed-manager-milan","messages":[{"role":"user","content":"How formal should I be with my manager in Milan, and how do workplace hierarchy and local communication norms interact?"}],"expectedRoute":"both"},
+  {"id":"scope-bhutan","messages":[{"role":"user","content":"What language family does Bhutanese belong to?"}],"expectedRoute":"out_of_scope"},
+  {"id":"scope-uruguay","messages":[{"role":"user","content":"Tell me about Uruguay's GDP over the last twenty years."}],"expectedRoute":"out_of_scope"},
+  {"id":"italy-uruguay-comparison","messages":[{"role":"user","content":"Compare Italy's GDP performance with Uruguay over the last twenty years, focusing on what the contrast says about Italy."}],"expectedRoute":"business"}
+]
