@@ -1,6 +1,6 @@
 {
   "name": "giulia-local",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "Local-only unified Giulia prototype with Qwen routing and forensic eval traces.",
@@ -9,7 +9,9 @@
     "dev": "node server.mjs",
     "test": "node --test",
     "eval": "node scripts/run-evals.mjs",
-    "eval:qwen": "GIULIA_PROVIDER=qwen node scripts/run-evals.mjs"
+    "eval:mock": "node scripts/run-evals.mjs",
+    "eval:ollama": "node scripts/run-evals.mjs",
+    "eval:qwen": "node scripts/run-evals.mjs"
   },
   "engines": { "node": ">=20" }
 }
