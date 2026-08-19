@@ -1,6 +1,6 @@
 # Giulia Local
 
-Private, localhost-first prototype for one visible Giulia backed by three all-Qwen roles:
+Private, localhost-first prototype for one visible Giulia backed by three internal Qwen roles:
 
 ```text
 User → Router Giulia
@@ -9,36 +9,58 @@ User → Router Giulia
        └─ Both → Cultural + Business → synthesis
 ```
 
-The browser never receives the Qwen API key. The local Node server owns all model calls. No web-search, browsing, URL-fetch, or arbitrary tool capability is exposed to Giulia.
+## Riverbot-style Qwen setup
 
-## Quick start: mock mode
+Giulia now mirrors the local CHRONEBBI/Riverbot arrangement: Ollama runs Qwen on your machine and Giulia talks to Ollama's local chat endpoint.
 
-Requires Node 20+.
+Default lab configuration:
+
+```text
+provider: ollama
+model: qwen3.5:9b
+endpoint: http://localhost:11434/api/chat
+context: 8192
+keep_alive: 30m
+```
+
+No API key is required. The browser talks only to the localhost Giulia server; the Giulia server talks only to local Ollama. No web-search, browsing, URL-fetch, or arbitrary tool capability is exposed to any Giulia role.
+
+## Quick start
+
+Requires Node 20+ and Ollama with `qwen3.5:9b` already installed.
 
 ```powershell
 Copy-Item .env.example .env
+ollama list
 npm start
 ```
 
-Open `http://127.0.0.1:8787`.
-
-The example env defaults to `GIULIA_PROVIDER=mock`, so the complete routing/UI/trace plumbing works without Qwen.
-
-## Turn on Qwen
-
-Edit `.env`:
+Open:
 
 ```text
-GIULIA_PROVIDER=qwen
-DASHSCOPE_API_KEY=YOUR_KEY_HERE
-QWEN_BASE_URL=YOUR_MODEL_STUDIO_OPENAI_COMPATIBLE_BASE_URL
-QWEN_MODEL=qwen3.7-max
-QWEN_ROUTER_MODEL=qwen3.7-max
+http://127.0.0.1:8787
 ```
 
-Then restart `npm start`.
+If Ollama is not already running, start the Ollama desktop app/service first.
 
-Do not commit `.env`. It is gitignored.
+### Smoke-test the model directly
+
+```powershell
+ollama run qwen3.5:9b
+```
+
+If that works, Giulia should be able to reach the same model through `http://localhost:11434/api/chat`.
+
+## Mock mode
+
+To test the whole application without running Qwen:
+
+```powershell
+$env:GIULIA_PROVIDER='mock'
+npm start
+```
+
+Or set `GIULIA_PROVIDER=mock` in `.env`.
 
 ## Prompts and KB
 
@@ -50,21 +72,11 @@ Do not commit `.env`. It is gitignored.
 - `knowledge/cultural/`
 - `knowledge/business/`
 
-Current KB loading is intentionally simple: readable text files are concatenated into the specialist context. Once the real corpus arrives, this layer can be replaced with indexed retrieval without changing the rest of Giulia.
+Current KB loading is intentionally simple: readable text files are concatenated into the specialist context. Once the real corpus arrives, this layer can be replaced with indexed retrieval without changing the visible Giulia architecture.
 
 ## Forensic traces
 
-Every local chat run can write a JSON trace to `runs/`. Traces record:
-
-- conversation input
-- route and short observable route reason
-- model calls and outputs
-- prompt hashes and sizes
-- KB hashes and source filenames
-- latency / usage metadata when the provider returns it
-- final visible answer
-
-They never record API keys.
+Every local chat run can write a JSON trace to `runs/`. Traces record conversation input, route, model calls/outputs, prompt and KB hashes, source filenames, timing/usage metadata, and the final visible answer. They never record API keys.
 
 ## Evaluation
 
@@ -72,24 +84,17 @@ Mock plumbing suite:
 
 ```powershell
 npm test
-npm run eval
+npm run eval:mock
 ```
 
-Real Qwen suite:
+Real local Qwen suite:
 
 ```powershell
-$env:GIULIA_PROVIDER='qwen'
-npm run eval:qwen
+npm run eval:ollama
 ```
 
-Reports are saved in `eval-results/`; per-run evidence is saved in `runs/`.
+Reports are saved in `eval-results/`; per-run evidence is saved in `runs/`. Those can be handed back to ChatGPT for side-by-side review against old Giulia behavior.
 
-## Private GitHub Actions eval bridge
+## Optional hosted Qwen
 
-`.github/workflows/eval.yml` is manual-only. In this private repo, add:
-
-- repository secret `DASHSCOPE_API_KEY`
-- repository secret `QWEN_BASE_URL`
-- optional repository variables `QWEN_MODEL` and `QWEN_ROUTER_MODEL`
-
-Then manually run **Manual Giulia Eval**. It uploads `eval-results/` and `runs/` as an artifact for later review.
+The old hosted-Qwen adapter remains in the codebase for later experiments, but it is not needed for intra-lab testing and is no longer the default.
