@@ -12,6 +12,7 @@ const giulia = createGiulia({ config, provider });
 const cases = JSON.parse(fs.readFileSync(path.join(config.rootDir, 'evals', 'cases.json'), 'utf8'));
 const started = new Date().toISOString();
 const results = [];
+const activeModel = config.provider === 'ollama' ? config.ollama.model : config.qwen.model;
 
 for (const testCase of cases) {
   const t0 = Date.now();
@@ -23,7 +24,7 @@ for (const testCase of cases) {
   }
 }
 
-const report = { started, finished: new Date().toISOString(), provider: provider.name, model: config.qwen.model, passedRoutes: results.filter(r => r.routePass).length, total: results.length, results };
+const report = { started, finished: new Date().toISOString(), provider: provider.name, model: activeModel, passedRoutes: results.filter(r => r.routePass).length, total: results.length, results };
 fs.mkdirSync(config.evalResultsDir, { recursive: true });
 const name = `eval-${new Date().toISOString().replace(/[:.]/g, '-')}-${provider.name}.json`;
 const file = path.join(config.evalResultsDir, name);
