@@ -1,8 +1,19 @@
 [
   {"id":"culture-language-family","messages":[{"role":"user","content":"What language family does Italian belong to, and why does that matter culturally?"}],"expectedRoute":"cultural"},
-  {"id":"business-gdp","messages":[{"role":"user","content":"What should an intern understand about Italy's GDP and business environment?"}],"expectedRoute":"business"},
-  {"id":"mixed-manager-milan","messages":[{"role":"user","content":"How formal should I be with my manager in Milan, and how do workplace hierarchy and local communication norms interact?"}],"expectedRoute":"both"},
+  {"id":"culture-campanilismo","messages":[{"role":"user","content":"What does campanilismo mean in Italy?"}],"expectedRoute":"cultural"},
+  {"id":"culture-dining","messages":[{"role":"user","content":"What should I know about Italian dining etiquette?"}],"expectedRoute":"cultural"},
+  {"id":"culture-workplace-signal","messages":[{"role":"user","content":"In Italy, what does a coworker switching from buongiorno to ciao signal socially?"}],"expectedRoute":"cultural"},
+  {"id":"business-gdp","messages":[{"role":"user","content":"What should an investor understand about Italy's GDP and business environment?"}],"expectedRoute":"business"},
+  {"id":"business-tax","messages":[{"role":"user","content":"What are the main Italian corporate tax compliance issues for a new company?"}],"expectedRoute":"business"},
+  {"id":"business-manager","messages":[{"role":"user","content":"How formal should I be with my manager at an Italian company?"}],"expectedRoute":"business"},
+  {"id":"both-campanilismo-suppliers","messages":[{"role":"user","content":"How could Italian campanilismo affect supplier selection and regional market expansion?"}],"expectedRoute":"both"},
+  {"id":"both-family-business","messages":[{"role":"user","content":"How does Italian family culture interact with governance and succession in family-owned companies?"}],"expectedRoute":"both"},
+  {"id":"both-social-negotiation","messages":[{"role":"user","content":"How should Italian relationship-building norms change my concrete negotiation strategy with a local supplier?"}],"expectedRoute":"both"},
   {"id":"scope-bhutan","messages":[{"role":"user","content":"What language family does Bhutanese belong to?"}],"expectedRoute":"out_of_scope"},
   {"id":"scope-uruguay","messages":[{"role":"user","content":"Tell me about Uruguay's GDP over the last twenty years."}],"expectedRoute":"out_of_scope"},
-  {"id":"italy-uruguay-comparison","messages":[{"role":"user","content":"Compare Italy's GDP performance with Uruguay over the last twenty years, focusing on what the contrast says about Italy."}],"expectedRoute":"business"}
+  {"id":"scope-weather","messages":[{"role":"user","content":"What is the weather in Rome tomorrow?"}],"expectedRoute":"out_of_scope"},
+  {"id":"scope-visa","messages":[{"role":"user","content":"Walk me through the exact current Italian tourist visa application process."}],"expectedRoute":"out_of_scope"},
+  {"id":"italy-uruguay-comparison","messages":[{"role":"user","content":"Compare Italy's GDP performance with Uruguay, focusing on what the contrast says about Italy's economy."}],"expectedRoute":"business"},
+  {"id":"followup-cultural","messages":[{"role":"user","content":"How formal are greetings in Italy?"},{"role":"assistant","content":"They vary by relationship and context."},{"role":"user","content":"What about Naples?"}],"expectedRoute":"cultural"},
+  {"id":"followup-business","messages":[{"role":"user","content":"I am planning Italian market entry for my company."},{"role":"assistant","content":"Which dimension do you want to examine?"},{"role":"user","content":"What about Milan specifically?"}],"expectedRoute":"business"}
 ]
