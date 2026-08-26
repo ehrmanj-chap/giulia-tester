@@ -6,6 +6,7 @@
   {"id":"business-gdp","messages":[{"role":"user","content":"What should an investor understand about Italy's GDP and business environment?"}],"expectedRoute":"business"},
   {"id":"business-tax","messages":[{"role":"user","content":"What are the main Italian corporate tax compliance issues for a new company?"}],"expectedRoute":"business"},
   {"id":"business-manager","messages":[{"role":"user","content":"How formal should I be with my manager at an Italian company?"}],"expectedRoute":"business"},
+  {"id":"business-company-law","messages":[{"role":"user","content":"What should I know about forming an Italian SRL rather than an SPA?"}],"expectedRoute":"business"},
   {"id":"both-campanilismo-suppliers","messages":[{"role":"user","content":"How could Italian campanilismo affect supplier selection and regional market expansion?"}],"expectedRoute":"both"},
   {"id":"both-family-business","messages":[{"role":"user","content":"How does Italian family culture interact with governance and succession in family-owned companies?"}],"expectedRoute":"both"},
   {"id":"both-social-negotiation","messages":[{"role":"user","content":"How should Italian relationship-building norms change my concrete negotiation strategy with a local supplier?"}],"expectedRoute":"both"},

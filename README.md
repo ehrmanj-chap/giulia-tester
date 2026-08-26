@@ -11,13 +11,14 @@ User → Router Giulia
 
 ## Current lab state
 
-**Router Giulia is live. Cultural Giulia is live. Business Giulia is scaffolded but intentionally has no knowledge corpus yet.**
+**Router Giulia, Cultural Giulia, and Business Giulia all have their current lab corpora loaded.**
 
-The local server detects corpus availability automatically:
-- Cultural route + Culture corpus present → retrieve evidence and answer.
-- Business route + Business corpus absent → report the missing internal evidence layer instead of letting an empty specialist hallucinate.
-- Both route while Business is absent → answer the Cultural portion and mark the result incomplete for internal testing.
-- Once Business documents are added, the full `both` path automatically calls both specialists and synthesis.
+- Cultural: 25 unique documents.
+- Business: 25 unique documents (26 supplied; one byte-for-byte duplicate removed).
+- `cultural` route → Culture retrieval → Cultural Giulia.
+- `business` route → Business retrieval → Business Giulia.
+- `both` route → both retrieval layers and specialists → one Giulia synthesis.
+- `out_of_scope` route → Italy-scope redirect without calling a specialist.
 
 ## Riverbot-style Qwen setup
 
@@ -63,9 +64,12 @@ If that works, Giulia should be able to reach the same model through `http://loc
 
 ## Knowledge retrieval
 
-Cultural Giulia currently has the 25-document approved Culture corpus.
+Both specialists now use approved local corpora:
 
-The corpus is expanded into individual source documents, chunked locally, and ranked lexically for each conversation turn. Only the best relevant passages are placed in Qwen's context. No embeddings service, vector database, external search, or internet retrieval is required.
+- Cultural Giulia: 25 documents.
+- Business Giulia: 25 documents.
+
+The corpora are expanded into individual source documents, chunked locally, and ranked lexically for each conversation turn. Only the best relevant passages are placed in Qwen's context. No embeddings service, vector database, external search, or internet retrieval is required.
 
 Retrieval and model-call evidence are written into the forensic trace so we can inspect exactly which source chunks reached Qwen.
 
@@ -74,7 +78,7 @@ Retrieval and model-call evidence are written into the forensic trace so we can 
 - `prompts/core.md` — one public Giulia identity, shared voice, evidence boundary, no-web rule
 - `prompts/router.md` — Cultural / Business / Both / out-of-scope routing contract
 - `prompts/cultural.md` — Cultural Giulia behavior and grounding protocol
-- `prompts/business.md` — Business Giulia behavior; corpus arrives next
+- `prompts/business.md` — Business Giulia behavior and grounding protocol
 - `prompts/synthesis.md` — seam-hiding merge for true Both questions
 
 ## Forensic traces
@@ -90,7 +94,7 @@ npm test
 npm run eval:mock
 ```
 
-The current suite checks Culture retrieval, route boundaries, multi-turn routing, out-of-scope behavior, and the Culture-only bootstrap state.
+The current suite checks both corpora, Culture and Business retrieval, route boundaries, multi-turn routing, out-of-scope behavior, and the full two-specialist synthesis path.
 
 Run the same router suite against real local Qwen:
 

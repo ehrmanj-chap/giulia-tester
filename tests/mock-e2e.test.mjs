@@ -15,14 +15,15 @@ function testConfig() {
 }
 function makeGiulia() { const config = testConfig(); return { config, giulia: createGiulia({ config, provider: new MockProvider(config) }) }; }
 
-test('culture corpus is loaded while business corpus is intentionally absent', () => {
+test('both current lab corpora are loaded', () => {
   const { giulia } = makeGiulia();
   const status = giulia.status();
   assert.equal(status.available.cultural, true);
-  assert.equal(status.available.business, false);
+  assert.equal(status.available.business, true);
   assert.equal(status.cultural.documents, 25);
   assert.ok(status.cultural.chunks > 25);
-  assert.equal(status.business.documents, 0);
+  assert.equal(status.business.documents, 25);
+  assert.equal(status.business.chunks, 267);
 });
 
 test('routes a cultural question and calls only Cultural Giulia internally', async () => {
@@ -35,21 +36,23 @@ test('routes a cultural question and calls only Cultural Giulia internally', asy
   assert.ok(result.trace.calls[1].retrieval.length > 0);
 });
 
-test('business route is testable before the business corpus arrives', async () => {
+test('business route retrieves evidence and calls Business Giulia', async () => {
   const { giulia } = makeGiulia();
   const result = await giulia.chat([{ role: 'user', content: 'What should I know about Italian corporate tax compliance?' }]);
   assert.equal(result.route, 'business');
-  assert.match(result.reply, /Business knowledge corpus is not loaded yet/);
-  assert.deepEqual(result.trace.calls.map(c => c.role), ['router']);
+  assert.match(result.reply, /Giulia business answer/);
+  assert.deepEqual(result.trace.calls.map(c => c.role), ['router', 'business']);
+  assert.ok(result.trace.calls[1].retrieval.length > 0);
 });
 
-test('both route returns the cultural half plus an explicit internal incompleteness note', async () => {
+test('both route retrieves from both corpora and synthesizes one answer', async () => {
   const { giulia } = makeGiulia();
   const result = await giulia.chat([{ role: 'user', content: 'How could Italian campanilismo affect supplier selection and market expansion?' }]);
   assert.equal(result.route, 'both');
-  assert.match(result.reply, /Giulia cultural answer/);
-  assert.match(result.reply, /Business corpus is not loaded yet/);
-  assert.deepEqual(result.trace.calls.map(c => c.role), ['router', 'cultural']);
+  assert.match(result.reply, /unified Giulia synthesis/);
+  assert.deepEqual(result.trace.calls.map(c => c.role), ['router', 'cultural', 'business', 'synthesis']);
+  assert.ok(result.trace.calls[1].retrieval.length > 0);
+  assert.ok(result.trace.calls[2].retrieval.length > 0);
 });
 
 test('professional context can still route cultural when the practical task is social meaning', async () => {
