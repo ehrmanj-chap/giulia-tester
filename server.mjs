@@ -16,7 +16,19 @@ const giulia = createGiulia({ config, provider });
 const publicDir = path.join(rootDir, 'public');
 
 const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8' };
-function sendJson(res, status, payload) { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(payload)); }
+function corsHeaders(req) {
+  const requested = req.headers.origin || '';
+  const allowed = config.allowedOrigin === '*' ? '*' : config.allowedOrigin;
+  return {
+    'Access-Control-Allow-Origin': allowed,
+    'Access-Control-Allow-Headers': 'Content-Type, X-Giulia-Lab-Token',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Vary': requested ? 'Origin' : undefined
+  };
+}
+function cleanHeaders(headers) { return Object.fromEntries(Object.entries(headers).filter(([, value]) => value != null)); }
+function sendJson(req, res, status, payload) { res.writeHead(status, cleanHeaders({ 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...corsHeaders(req) })); res.end(JSON.stringify(payload)); }
+function authorized(req) { return !config.labToken || req.headers['x-giulia-lab-token'] === config.labToken; }
 async function readBody(req, maxBytes = 2_000_000) { const chunks = []; let size = 0; for await (const chunk of req) { size += chunk.length; if (size > maxBytes) throw new Error('Request body too large.'); chunks.push(chunk); } return Buffer.concat(chunks).toString('utf8'); }
 function activeModels() { return config.provider === 'ollama' ? { model: config.ollama.model, routerModel: config.ollama.routerModel } : { model: config.qwen.model, routerModel: config.qwen.routerModel }; }
 function serveStatic(req, res) {
@@ -32,9 +44,11 @@ function serveStatic(req, res) {
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+    if (req.method === 'OPTIONS' && url.pathname.startsWith('/api/')) { res.writeHead(204, cleanHeaders(corsHeaders(req))); return res.end(); }
+    if (url.pathname.startsWith('/api/') && !authorized(req)) return sendJson(req, res, 401, { error: 'Invalid or missing Giulia lab token.' });
     if (req.method === 'GET' && url.pathname === '/api/status') {
       const models = activeModels();
-      return sendJson(res, 200, { ok: true, provider: provider.name, model: models.model, routerModel: models.routerModel, diagnostics: config.devDiagnostics, knowledge: giulia.status() });
+      return sendJson(req, res, 200, { ok: true, provider: provider.name, model: models.model, routerModel: models.routerModel, diagnostics: config.devDiagnostics, knowledge: giulia.status() });
     }
     if (req.method === 'POST' && url.pathname === '/api/chat') {
       const body = JSON.parse(await readBody(req) || '{}');
@@ -42,24 +56,25 @@ const server = http.createServer(async (req, res) => {
       const models = activeModels();
       const payload = { reply: result.reply, route: result.route, model: models.model, runId: result.trace.runId };
       if (config.devDiagnostics) payload.diagnostics = { route: result.trace.route, calls: result.trace.calls.map(call => ({ role: call.role, model: call.model, latencyMs: call.latencyMs, usage: call.usage, retrieval: call.retrieval || null })), promptMeta: result.trace.promptMeta, knowledgeMeta: result.trace.knowledgeMeta };
-      return sendJson(res, 200, payload);
+      return sendJson(req, res, 200, payload);
     }
     if (req.method === 'GET' && url.pathname === '/api/runs/latest') {
       const files = fs.existsSync(config.runsDir) ? fs.readdirSync(config.runsDir).filter(name => name.endsWith('.json')).sort().reverse() : [];
-      if (!files.length) return sendJson(res, 404, { error: 'No traces yet.' });
+      if (!files.length) return sendJson(req, res, 404, { error: 'No traces yet.' });
       const text = fs.readFileSync(path.join(config.runsDir, files[0]), 'utf8');
-      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Disposition': `attachment; filename="${files[0]}"`, 'Cache-Control': 'no-store' });
+      res.writeHead(200, cleanHeaders({ 'Content-Type': 'application/json; charset=utf-8', 'Content-Disposition': `attachment; filename="${files[0]}"`, 'Cache-Control': 'no-store', ...corsHeaders(req) }));
       return res.end(text);
     }
     if (req.method === 'GET') return serveStatic(req, res);
     res.writeHead(405); res.end('Method not allowed');
-  } catch (error) { console.error(error); sendJson(res, 500, { error: error.message || 'Internal error' }); }
+  } catch (error) { console.error(error); sendJson(req, res, 500, { error: error.message || 'Internal error' }); }
 });
 
 server.listen(config.port, config.host, () => {
   const s = giulia.status();
-  console.log(`Giulia Local listening on http://${config.host}:${config.port}`);
+  console.log(`Giulia listening on http://${config.host}:${config.port}`);
   console.log(`Provider: ${provider.name} (${activeModels().model})`);
   console.log(`Knowledge: cultural=${s.cultural.documents} docs / business=${s.business.documents} docs`);
+  console.log(`Remote lab auth: ${config.labToken ? 'token required' : 'open (GIULIA_LAB_TOKEN is unset)'}`);
   console.log('No web-search or browsing tools are exposed to Giulia.');
 });
