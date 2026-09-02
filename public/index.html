@@ -3,16 +3,100 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Giulia Local Lab</title>
-  <link rel="stylesheet" href="/styles.css" />
+  <title>Giulia Test Lab</title>
+  <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
-  <header><div class="wrap"><div class="eyebrow">PRIVATE LOCAL LAB</div><h1>Giulia</h1><p>Unified Giulia prototype. Router + Cultural knowledge are live; Business corpus is still intentionally empty.</p></div></header>
+  <header>
+    <div class="wrap">
+      <div class="eyebrow">PRIVATE TEST LAB</div>
+      <h1>Giulia</h1>
+      <p>Unified Italian cultural + business intelligence prototype. Interactive chats, routed diagnostics, and parallel batch testing.</p>
+    </div>
+  </header>
+
   <main class="wrap">
-    <section class="status-card"><div><strong id="providerStatus">Checking local backend…</strong><div id="modelStatus" class="muted"></div></div><div class="toolbar"><span id="routeBadge" class="badge hidden">route</span><button id="downloadTrace" class="ghost" type="button">Download latest trace</button><button id="reset" class="ghost" type="button">Reset</button></div></section>
-    <section class="chat-card"><div id="messages" class="messages" aria-live="polite"><div class="system-note">Local developer build. Cultural Giulia is grounded in the 25-document Culture corpus. Business routes are visible but intentionally incomplete until the Business corpus is loaded.</div></div><form id="chatForm" class="composer"><textarea id="input" rows="3" placeholder="Ask Giulia about Italian culture or business…" autofocus></textarea><button id="send" type="submit">Send</button></form></section>
-    <details class="diagnostics-card"><summary>Forensic diagnostics</summary><pre id="diagnostics">No run yet.</pre></details>
+    <section class="status-card">
+      <div>
+        <strong id="providerStatus">Backend not checked yet</strong>
+        <div id="modelStatus" class="muted">Configure the API endpoint below if this page is hosted separately from the Giulia server.</div>
+      </div>
+      <div class="toolbar">
+        <span id="routeBadge" class="badge hidden">route</span>
+        <button id="downloadTrace" class="ghost" type="button">Latest trace</button>
+        <button id="reset" class="ghost" type="button">Reset chat</button>
+      </div>
+    </section>
+
+    <details class="settings-card" open>
+      <summary>Developer connection</summary>
+      <div class="settings-grid">
+        <label>Backend URL
+          <input id="apiBase" type="url" placeholder="https://your-giulia-backend.example.com" />
+        </label>
+        <label>Lab token <span class="muted-inline">optional</span>
+          <input id="labToken" type="password" autocomplete="off" placeholder="Stored only in this browser" />
+        </label>
+        <div class="settings-actions">
+          <button id="saveConnection" type="button">Save + connect</button>
+          <button id="clearConnection" class="ghost" type="button">Use same origin</button>
+        </div>
+      </div>
+    </details>
+
+    <nav class="tabs" aria-label="Lab modes">
+      <button class="tab active" data-tab="chat" type="button">Single chat</button>
+      <button class="tab" data-tab="batch" type="button">Batch queue</button>
+    </nav>
+
+    <section id="chatPanel" class="panel">
+      <section class="chat-card">
+        <div id="messages" class="messages" aria-live="polite">
+          <div class="system-note">Each reset starts a fresh conversation. Both Cultural and Business corpora are loaded in this build.</div>
+        </div>
+        <form id="chatForm" class="composer">
+          <textarea id="input" rows="3" placeholder="Ask Giulia about Italian culture or business…" autofocus></textarea>
+          <button id="send" type="submit">Send</button>
+        </form>
+      </section>
+      <details class="diagnostics-card"><summary>Forensic diagnostics</summary><pre id="diagnostics">No run yet.</pre></details>
+    </section>
+
+    <section id="batchPanel" class="panel hidden">
+      <section class="batch-card">
+        <div class="batch-header">
+          <div>
+            <h2>Batch conversation queue</h2>
+            <p class="muted">Upload TXT, CSV, or JSON, or paste one question per line. Every item runs as its own isolated conversation.</p>
+          </div>
+          <label class="file-button">Upload questions
+            <input id="batchFile" type="file" accept=".txt,.csv,.json,text/plain,text/csv,application/json" />
+          </label>
+        </div>
+
+        <textarea id="batchInput" class="batch-input" rows="8" placeholder="Why is relationship-building important in Italian business?&#10;How does campanilismo affect regional identity?&#10;What should an American manager expect in a meeting in Milan?"></textarea>
+
+        <div class="batch-controls">
+          <label>Parallel chats
+            <input id="concurrency" type="number" min="1" max="16" value="4" />
+          </label>
+          <button id="loadBatch" class="ghost" type="button">Load pasted questions</button>
+          <button id="runBatch" type="button">Run queue</button>
+          <button id="stopBatch" class="ghost" type="button" disabled>Stop launching</button>
+          <button id="exportBatch" class="ghost" type="button" disabled>Export JSON</button>
+          <button id="clearBatch" class="ghost" type="button">Clear</button>
+        </div>
+
+        <div class="progress-row">
+          <progress id="batchProgress" value="0" max="1"></progress>
+          <span id="batchSummary" class="muted">No questions queued.</span>
+        </div>
+
+        <div id="batchResults" class="batch-results"></div>
+      </section>
+    </section>
   </main>
-  <script src="/app.js" type="module"></script>
+
+  <script src="./app.js" type="module"></script>
 </body>
 </html>
