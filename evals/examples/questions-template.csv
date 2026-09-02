@@ -1,0 +1,5 @@
+id,question,expectedRoute
+culture-1,"What does campanilismo mean in Italy?",cultural
+business-1,"How formal should I be with a manager at an Italian company?",business
+both-1,"How should Italian relationship-building norms affect a negotiation with a local supplier?",both
+scope-1,"What will the weather be in Rome tomorrow?",out_of_scope
