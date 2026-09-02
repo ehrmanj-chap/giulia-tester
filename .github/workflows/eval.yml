@@ -30,7 +30,10 @@ on:
   push:
     branches: [main]
     paths:
-      - 'evals/inbox/**'
+      - 'evals/inbox/*.txt'
+      - 'evals/inbox/*.csv'
+      - 'evals/inbox/*.json'
+      - 'evals/inbox/*.jsonl'
 
 jobs:
   batch:
