@@ -7,6 +7,8 @@ import { createGiulia } from '../lib/giulia.mjs';
 
 loadDotEnv();
 
+const PROMPT_FILES = ['core.md', 'router.md', 'cultural.md', 'business.md', 'synthesis.md'];
+
 function arg(name, fallback = null) {
   const hit = process.argv.find(value => value.startsWith(`--${name}=`));
   return hit ? hit.slice(name.length + 3) : fallback;
@@ -32,7 +34,14 @@ function csvRows(text) {
 
 function normalizeCase(item, index) {
   if (typeof item === 'string') {
-    return { id: `q-${index + 1}`, messages: [{ role: 'user', content: item.trim() }], expectedRoute: null };
+    return {
+      id: `q-${index + 1}`,
+      messages: [{ role: 'user', content: item.trim() }],
+      expectedRoute: null,
+      tags: [],
+      evalFocus: '',
+      expectedBehavior: []
+    };
   }
   if (!item || typeof item !== 'object') throw new Error(`Question ${index + 1} is not a string or object.`);
   const messages = Array.isArray(item.messages)
@@ -44,7 +53,12 @@ function normalizeCase(item, index) {
   return {
     id: String(item.id || `q-${index + 1}`),
     messages,
-    expectedRoute: item.expectedRoute || item.expected_route || null
+    expectedRoute: item.expectedRoute || item.expected_route || null,
+    tags: Array.isArray(item.tags) ? item.tags.map(String) : [],
+    evalFocus: String(item.evalFocus || item.eval_focus || ''),
+    expectedBehavior: Array.isArray(item.expectedBehavior)
+      ? item.expectedBehavior.map(String)
+      : Array.isArray(item.expected_behavior) ? item.expected_behavior.map(String) : []
   };
 }
 
@@ -80,8 +94,17 @@ function loadCases(file) {
 }
 
 function csvEscape(value) {
-  const text = value == null ? '' : String(value);
+  const text = Array.isArray(value) ? value.join(' | ') : value == null ? '' : String(value);
   return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+}
+
+function promptSnapshot(config) {
+  const snapshot = {};
+  for (const name of PROMPT_FILES) {
+    const file = path.join(config.promptsDir, name);
+    snapshot[name] = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null;
+  }
+  return snapshot;
 }
 
 const inputFile = arg('file', 'evals/examples/meeting-demo.json');
@@ -98,6 +121,14 @@ const started = new Date().toISOString();
 const results = new Array(cases.length);
 let cursor = 0;
 
+function caseMetadata(testCase) {
+  return {
+    tags: testCase.tags,
+    evalFocus: testCase.evalFocus,
+    expectedBehavior: testCase.expectedBehavior
+  };
+}
+
 async function worker() {
   while (true) {
     const index = cursor++;
@@ -110,6 +141,7 @@ async function worker() {
         id: testCase.id,
         question: [...testCase.messages].reverse().find(m => m.role === 'user')?.content || '',
         messages: testCase.messages,
+        ...caseMetadata(testCase),
         expectedRoute: testCase.expectedRoute,
         actualRoute: result.route,
         routePass: testCase.expectedRoute ? result.route === testCase.expectedRoute : null,
@@ -125,9 +157,12 @@ async function worker() {
         id: testCase.id,
         question: [...testCase.messages].reverse().find(m => m.role === 'user')?.content || '',
         messages: testCase.messages,
+        ...caseMetadata(testCase),
         expectedRoute: testCase.expectedRoute,
         actualRoute: null,
         routePass: testCase.expectedRoute ? false : null,
+        routeConfidence: null,
+        routeReason: null,
         reply: '',
         runId: null,
         elapsedMs: Date.now() - t0,
@@ -145,11 +180,13 @@ const routeCounts = results.reduce((acc, r) => { const key = r.actualRoute || 'e
 const scored = results.filter(r => r.expectedRoute);
 const report = {
   sourceFile: inputFile,
+  gitCommit: process.env.GITHUB_SHA || null,
   started,
   finished: new Date().toISOString(),
   provider: provider.name,
   model: activeModel,
   concurrency,
+  promptSnapshot: promptSnapshot(config),
   total: results.length,
   successful: results.filter(r => !r.error).length,
   errors: results.filter(r => r.error).length,
@@ -167,12 +204,13 @@ const csvFile = path.join(config.evalResultsDir, `${stem}-${stamp}.csv`);
 const summaryFile = path.join(config.evalResultsDir, `${stem}-${stamp}.md`);
 
 fs.writeFileSync(jsonFile, JSON.stringify(report, null, 2));
-const columns = ['id','question','expectedRoute','actualRoute','routePass','routeConfidence','elapsedMs','runId','reply','error'];
+const columns = ['id','question','tags','evalFocus','expectedBehavior','expectedRoute','actualRoute','routePass','routeConfidence','elapsedMs','runId','reply','error'];
 fs.writeFileSync(csvFile, [columns.join(','), ...results.map(r => columns.map(c => csvEscape(r[c])).join(','))].join('\n'));
 
 const summary = [
   `# Giulia batch: ${stem}`,
   '',
+  `- Git commit: **${report.gitCommit || 'local / unavailable'}**`,
   `- Questions: **${report.total}**`,
   `- Successful: **${report.successful}**`,
   `- Errors: **${report.errors}**`,
@@ -180,10 +218,11 @@ const summary = [
   `- Parallel conversations: **${report.concurrency}**`,
   scored.length ? `- Expected-route checks: **${report.routePasses}/${report.routeChecks} passed**` : '- Expected-route checks: not supplied',
   `- Routes: ${Object.entries(routeCounts).map(([k,v]) => `${k}=${v}`).join(', ')}`,
+  '- Prompt snapshot: embedded in the JSON report',
   '',
-  '| ID | Expected | Actual | Time | Status |',
-  '|---|---|---|---:|---|',
-  ...results.map(r => `| ${r.id} | ${r.expectedRoute || ''} | ${r.actualRoute || ''} | ${r.elapsedMs} ms | ${r.error ? `ERROR: ${r.error.replaceAll('|','\\|')}` : (r.routePass === false ? 'route mismatch' : 'ok')} |`)
+  '| ID | Focus | Expected | Actual | Time | Status |',
+  '|---|---|---|---|---:|---|',
+  ...results.map(r => `| ${r.id} | ${(r.evalFocus || '').replaceAll('|','\\|')} | ${r.expectedRoute || ''} | ${r.actualRoute || ''} | ${r.elapsedMs} ms | ${r.error ? `ERROR: ${r.error.replaceAll('|','\\|')}` : (r.routePass === false ? 'route mismatch' : 'ok')} |`)
 ].join('\n');
 fs.writeFileSync(summaryFile, summary);
 
