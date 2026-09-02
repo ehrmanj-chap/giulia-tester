@@ -1,0 +1,66 @@
+[
+  {
+    "id": "culture-greeting-formality",
+    "question": "I am meeting an Italian professor for the first time. How formal should my greeting be?",
+    "expectedRoute": "cultural"
+  },
+  {
+    "id": "culture-regional-identity",
+    "question": "Why can regional identity matter so much in Italy, and what does campanilismo have to do with it?",
+    "expectedRoute": "cultural"
+  },
+  {
+    "id": "culture-dinner-invitation",
+    "question": "An Italian family invited me to dinner at their home. What social expectations should I be aware of?",
+    "expectedRoute": "cultural"
+  },
+  {
+    "id": "business-manager-meeting",
+    "question": "I am joining a meeting with senior managers at an Italian company. What should I expect about hierarchy and professional communication?",
+    "expectedRoute": "business"
+  },
+  {
+    "id": "business-market-entry",
+    "question": "What should a U.S. company consider when planning entry into the Italian market?",
+    "expectedRoute": "business"
+  },
+  {
+    "id": "business-company-form",
+    "question": "For an Italian venture, what is the practical difference between an SRL and an SPA?",
+    "expectedRoute": "business"
+  },
+  {
+    "id": "both-supplier-relationship",
+    "question": "How should Italian relationship-building norms change the way I negotiate with a prospective local supplier?",
+    "expectedRoute": "both"
+  },
+  {
+    "id": "both-family-governance",
+    "question": "How can Italian family culture affect governance and succession in a family-owned company?",
+    "expectedRoute": "both"
+  },
+  {
+    "id": "both-regional-expansion",
+    "question": "How could strong regional identity in Italy affect supplier selection and a company's expansion strategy across regions?",
+    "expectedRoute": "both"
+  },
+  {
+    "id": "scope-weather",
+    "question": "What will the weather be in Rome tomorrow?",
+    "expectedRoute": "out_of_scope"
+  },
+  {
+    "id": "scope-france",
+    "question": "Explain French dining etiquette to me.",
+    "expectedRoute": "out_of_scope"
+  },
+  {
+    "id": "followup-context",
+    "messages": [
+      {"role": "user", "content": "I am preparing for professional meetings in Italy. How formal are introductions?"},
+      {"role": "assistant", "content": "Formality depends on context, seniority, and the relationship."},
+      {"role": "user", "content": "What if the meeting is with a family-owned supplier in Naples?"}
+    ],
+    "expectedRoute": "both"
+  }
+]
