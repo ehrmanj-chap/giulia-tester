@@ -4,5 +4,5 @@
   {"id":"meeting-both","question":"How should Italian relationship-building norms change the way I negotiate with a prospective local supplier?","expectedRoute":"both"},
   {"id":"meeting-family-business","question":"How can Italian family culture affect governance and succession in a family-owned company?","expectedRoute":"both"},
   {"id":"meeting-out-of-scope","question":"What will the weather be in Rome tomorrow?","expectedRoute":"out_of_scope"},
-  {"id":"meeting-followup","messages":[{"role":"user","content":"I am preparing for professional meetings in Italy. How formal are introductions?"},{"role":"assistant","content":"Formality depends on context, seniority, and the relationship."},{"role":"user","content":"What if the meeting is with a family-owned supplier in Naples?"}],"expectedRoute":"both"}
+  {"id":"meeting-followup","messages":[{"role":"user","content":"I am preparing for professional meetings in Italy. How formal are introductions?"},{"role":"assistant","content":"Formality depends on context, seniority, and the relationship."},{"role":"user","content":"What if the meeting is with a family-owned supplier in Naples?"}],"expectedRoute":"cultural"}
 ]

@@ -82,7 +82,12 @@ jobs:
             {
               echo 'files<<EOF'
               git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" -- 'evals/inbox/**' \
-                | while IFS= read -r file; do [[ -f "$file" ]] && echo "$file"; done
+                | while IFS= read -r file; do
+                    [[ -f "$file" ]] || continue
+                    case "$file" in
+                      *.txt|*.csv|*.json|*.jsonl) echo "$file" ;;
+                    esac
+                  done
               echo 'EOF'
             } >> "$GITHUB_OUTPUT"
           fi
@@ -95,12 +100,19 @@ jobs:
         run: |
           set -euo pipefail
           if [[ -z "$BATCH_FILES" ]]; then
-            echo 'No question files found.' >&2
+            echo 'No supported question files found.' >&2
             exit 1
           fi
 
           run_one() {
             local target="$1"
+            case "$target" in
+              *.txt|*.csv|*.json|*.jsonl) ;;
+              *)
+                echo "Unsupported question file type: $target" >&2
+                exit 1
+                ;;
+            esac
             echo "=== Running $target ==="
             node scripts/run-batch.mjs \
               --provider="$GIULIA_PROVIDER" \
