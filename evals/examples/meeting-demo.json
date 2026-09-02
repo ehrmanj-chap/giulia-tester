@@ -61,6 +61,6 @@
       {"role": "assistant", "content": "Formality depends on context, seniority, and the relationship."},
       {"role": "user", "content": "What if the meeting is with a family-owned supplier in Naples?"}
     ],
-    "expectedRoute": "both"
+    "expectedRoute": "cultural"
   }
 ]

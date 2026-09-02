@@ -9,6 +9,14 @@ User → Router Giulia
        └─ Both → Cultural + Business → synthesis
 ```
 
+## Browser-only collaborator quick start
+
+**No local setup is required to test hosted Giulia.** A collaborator with access to this private repository can sign into a normal GitHub.com account, run the hosted Qwen tester from GitHub Actions, edit prompts on a branch, and download complete evaluation artifacts without seeing or copying the DashScope credentials.
+
+Start here: **[`docs/KELSIE_QUICKSTART.md`](docs/KELSIE_QUICKSTART.md)**
+
+Direct workflow: **[Giulia Batch Tester](../../actions/workflows/eval.yml)**
+
 ## Current lab state
 
 **Router Giulia, Cultural Giulia, and Business Giulia all have their current lab corpora loaded.**
@@ -26,12 +34,12 @@ Collaborators can test Giulia entirely from GitHub using **Actions → Giulia Ba
 
 Two workflows are supported:
 
-1. **Manual:** choose **Run workflow**, point it at a stored `.txt`, `.csv`, `.json`, or `.jsonl` question file, choose Qwen or Mock, and choose 1/2/4/8 parallel conversations.
-2. **Upload-and-run:** upload a question file to `evals/inbox/` and commit it to `main`. The batch runs automatically.
+1. **Manual:** choose **Run workflow**, point it at a stored `.txt`, `.csv`, `.json`, `.jsonl` question file, or an evaluation directory such as `evals/corpus-v1`; choose Qwen or Mock; and choose 1/2/4/8 parallel conversations.
+2. **Upload-and-run:** upload a supported question file to `evals/inbox/` and commit it to `main`. The batch runs automatically.
 
 Each question is isolated as its own conversation. The Action returns a downloadable artifact containing CSV answers, a full JSON report, a Markdown summary, and forensic traces. Hosted-Qwen credentials stay in repository Actions secrets, so collaborators do not need the API key themselves.
 
-See `evals/inbox/README.md` for copy-paste formats and `evals/examples/meeting-demo.json` for a ready-made demo set.
+See `docs/KELSIE_QUICKSTART.md` for the browser-only walkthrough, `evals/inbox/README.md` for copy-paste formats, and `evals/examples/meeting-demo.json` for a ready-made demo set.
 
 ## Riverbot-style Qwen setup
 
