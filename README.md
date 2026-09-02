@@ -20,6 +20,19 @@ User → Router Giulia
 - `both` route → both retrieval layers and specialists → one Giulia synthesis.
 - `out_of_scope` route → Italy-scope redirect without calling a specialist.
 
+## GitHub Actions batch testing (no local setup)
+
+Collaborators can test Giulia entirely from GitHub using **Actions → Giulia Batch Tester**.
+
+Two workflows are supported:
+
+1. **Manual:** choose **Run workflow**, point it at a stored `.txt`, `.csv`, `.json`, or `.jsonl` question file, choose Qwen or Mock, and choose 1/2/4/8 parallel conversations.
+2. **Upload-and-run:** upload a question file to `evals/inbox/` and commit it to `main`. The batch runs automatically.
+
+Each question is isolated as its own conversation. The Action returns a downloadable artifact containing CSV answers, a full JSON report, a Markdown summary, and forensic traces. Hosted-Qwen credentials stay in repository Actions secrets, so collaborators do not need the API key themselves.
+
+See `evals/inbox/README.md` for copy-paste formats and `evals/examples/meeting-demo.json` for a ready-made demo set.
+
 ## Riverbot-style Qwen setup
 
 Giulia mirrors the local CHRONEBBI/Riverbot arrangement: Ollama runs Qwen on your machine and Giulia talks to Ollama's local chat endpoint.
@@ -94,6 +107,12 @@ npm test
 npm run eval:mock
 ```
 
+Run a local batch file:
+
+```powershell
+npm run batch -- --provider=ollama --concurrency=4 --file=evals/examples/meeting-demo.json
+```
+
 The current suite checks both corpora, Culture and Business retrieval, route boundaries, multi-turn routing, out-of-scope behavior, and the full two-specialist synthesis path.
 
 Run the same router suite against real local Qwen:
@@ -106,4 +125,4 @@ Reports are saved in `eval-results/`; per-run evidence is saved in `runs/`. Thos
 
 ## Optional hosted Qwen
 
-The hosted-Qwen adapter remains in the codebase for later experiments, but it is not needed for intra-lab testing and is not the default.
+The hosted-Qwen adapter is used by the GitHub Actions batch tester. Local testing can continue to use Ollama instead.

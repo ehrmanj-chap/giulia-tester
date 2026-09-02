@@ -1,37 +1,118 @@
-name: Manual Giulia Eval
+name: Giulia Batch Tester
 
 on:
   workflow_dispatch:
+    inputs:
+      source_file:
+        description: 'Question file in the repo (.txt, .csv, .json, or .jsonl)'
+        required: true
+        default: 'evals/examples/meeting-demo.json'
+        type: string
+      provider:
+        description: 'Brain to use'
+        required: true
+        default: qwen
+        type: choice
+        options:
+          - qwen
+          - mock
+      concurrency:
+        description: 'Independent conversations to run at once'
+        required: true
+        default: '4'
+        type: choice
+        options:
+          - '1'
+          - '2'
+          - '4'
+          - '8'
+  push:
+    branches: [main]
+    paths:
+      - 'evals/inbox/**'
 
 jobs:
-  eval:
+  batch:
     runs-on: ubuntu-latest
     permissions:
       contents: read
     env:
-      GIULIA_PROVIDER: qwen
+      GIULIA_PROVIDER: ${{ inputs.provider || 'qwen' }}
       DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
       QWEN_BASE_URL: ${{ secrets.QWEN_BASE_URL }}
       QWEN_MODEL: ${{ vars.QWEN_MODEL || 'qwen3.7-max' }}
       QWEN_ROUTER_MODEL: ${{ vars.QWEN_ROUTER_MODEL || vars.QWEN_MODEL || 'qwen3.7-max' }}
       GIULIA_TRACE_WRITES: true
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
         with:
           node-version: 20
+
       - name: Unit tests with mock provider
         run: npm test
         env:
           GIULIA_PROVIDER: mock
-      - name: Run Qwen eval suite
-        run: npm run eval:qwen
-      - name: Upload forensic eval bundle
+
+      - name: Check hosted Qwen configuration
+        if: env.GIULIA_PROVIDER == 'qwen'
+        shell: bash
+        run: |
+          if [[ -z "$DASHSCOPE_API_KEY" ]]; then
+            echo 'Missing repository secret DASHSCOPE_API_KEY.' >&2
+            exit 1
+          fi
+          if [[ -z "$QWEN_BASE_URL" ]]; then
+            echo 'Missing repository secret QWEN_BASE_URL.' >&2
+            exit 1
+          fi
+
+      - name: Determine question files
+        id: sources
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            printf 'files<<EOF\n%s\nEOF\n' "${{ inputs.source_file }}" >> "$GITHUB_OUTPUT"
+          else
+            {
+              echo 'files<<EOF'
+              git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" -- 'evals/inbox/**' \
+                | while IFS= read -r file; do [[ -f "$file" ]] && echo "$file"; done
+              echo 'EOF'
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run independent Giulia conversations
+        shell: bash
+        env:
+          BATCH_FILES: ${{ steps.sources.outputs.files }}
+          BATCH_CONCURRENCY: ${{ inputs.concurrency || '4' }}
+        run: |
+          if [[ -z "$BATCH_FILES" ]]; then
+            echo 'No question files found.' >&2
+            exit 1
+          fi
+          while IFS= read -r file; do
+            [[ -z "$file" ]] && continue
+            echo "=== Running $file ==="
+            node scripts/run-batch.mjs \
+              --provider="$GIULIA_PROVIDER" \
+              --concurrency="$BATCH_CONCURRENCY" \
+              --file="$file"
+          done <<< "$BATCH_FILES"
+
+      - name: Upload answers, summaries, and forensic traces
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: giulia-eval-results
+          name: giulia-batch-${{ github.run_number }}
           path: |
             eval-results/
             runs/
           if-no-files-found: warn
+          retention-days: 30
