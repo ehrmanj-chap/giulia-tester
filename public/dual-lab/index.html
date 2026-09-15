@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex,nofollow,noarchive" />
+  <title>Cultural Agent Lab</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div>
+        <div class="eyebrow">PRIVATE / UNLISTED TEST UI</div>
+        <h1>Cultural Agent Lab</h1>
+        <p class="lede">One quiet test surface for the Italy and Japan agents. This page is intentionally not linked from the existing Giulia tester.</p>
+      </div>
+
+      <label class="agent-picker">
+        <span>Agent</span>
+        <select id="agentSelect" aria-label="Choose cultural agent">
+          <option value="giulia">🇮🇹 Giulia · Italy</option>
+          <option value="mei">🇯🇵 Mei · Japan</option>
+        </select>
+      </label>
+    </header>
+
+    <section class="status-card">
+      <div>
+        <div class="agent-line">
+          <span id="agentGlyph" class="agent-glyph">🇮🇹</span>
+          <div>
+            <strong id="agentName">Giulia</strong>
+            <div id="agentDescription" class="muted">Italian cultural + business intelligence</div>
+          </div>
+        </div>
+      </div>
+      <div class="status-right">
+        <span id="routeBadge" class="badge hidden">route</span>
+        <span id="backendStatus" class="status-pill neutral">Not checked</span>
+      </div>
+    </section>
+
+    <details class="connection-card">
+      <summary>Backend connection</summary>
+      <div class="connection-grid">
+        <label>
+          Backend URL
+          <input id="backendUrl" type="url" placeholder="https://agent-backend.example.com" />
+          <small id="backendHint">Giulia defaults to this page's origin when left blank.</small>
+        </label>
+        <label>
+          Lab token <span class="muted-inline">optional</span>
+          <input id="labToken" type="password" autocomplete="off" placeholder="Stored only in this browser" />
+        </label>
+      </div>
+      <div class="connection-actions">
+        <button id="saveConnection" type="button">Save + connect</button>
+        <button id="clearConnection" class="ghost" type="button">Clear selected agent</button>
+      </div>
+    </details>
+
+    <section class="chat-card">
+      <div id="messages" class="messages" aria-live="polite"></div>
+      <form id="chatForm" class="composer">
+        <textarea id="input" rows="3" placeholder="Ask the selected agent…" autofocus></textarea>
+        <button id="send" type="submit">Send</button>
+      </form>
+      <div class="chat-actions">
+        <button id="resetChat" class="ghost" type="button">Reset selected chat</button>
+        <button id="checkBackend" class="ghost" type="button">Check backend</button>
+      </div>
+    </section>
+
+    <details class="diagnostics-card">
+      <summary>Diagnostics</summary>
+      <pre id="diagnostics">No run yet.</pre>
+    </details>
+
+    <footer>
+      Unlisted test surface. No navigation from the existing public or tester pages points here.
+    </footer>
+  </main>
+
+  <script src="./app.js" type="module"></script>
+</body>
+</html>
