@@ -5,15 +5,13 @@ const AGENTS = {
     name: 'Giulia',
     glyph: '🇮🇹',
     description: 'Italian cultural + business intelligence',
-    allowSameOrigin: true,
-    backendHint: "Giulia defaults to this page's origin when left blank."
+    backendHint: 'Giulia requires an explicit hosted backend URL. GitHub Pages is static and is never treated as the API.'
   },
   mei: {
     name: 'Mei',
     glyph: '🇯🇵',
     description: 'Japanese cultural + business intelligence',
-    allowSameOrigin: false,
-    backendHint: 'Mei requires its own backend URL. Blank is intentionally treated as disconnected so requests can never fall through to Giulia.'
+    backendHint: 'Mei requires her own hosted backend URL. Blank is intentionally treated as disconnected so requests can never fall through to Giulia.'
   }
 };
 
@@ -67,11 +65,7 @@ function connection(agentId = selectedAgent) {
 }
 
 function resolvedBase(agentId = selectedAgent) {
-  const agent = AGENTS[agentId];
-  const saved = connection(agentId).base;
-  if (saved) return saved;
-  if (agent.allowSameOrigin) return '';
-  return null;
+  return connection(agentId).base || null;
 }
 
 function apiUrl(path, agentId = selectedAgent) {
