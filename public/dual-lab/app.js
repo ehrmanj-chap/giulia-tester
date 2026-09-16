@@ -1,3 +1,5 @@
+import { DEFAULT_BACKENDS } from './backend-defaults.js';
+
 const $ = selector => document.querySelector(selector);
 
 const AGENTS = {
@@ -11,7 +13,7 @@ const AGENTS = {
     name: 'Mei',
     glyph: '🇯🇵',
     description: 'Japanese cultural + business intelligence',
-    backendHint: 'Mei requires her own hosted backend URL. Blank is intentionally treated as disconnected so requests can never fall through to Giulia.'
+    backendHint: 'Mei defaults to the hosted Vercel backend. You can override the URL here for testing.'
   }
 };
 
@@ -42,11 +44,14 @@ function loadConnections() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
     return {
-      giulia: { base: saved.giulia?.base ?? '', token: saved.giulia?.token ?? localStorage.getItem('giuliaLabToken') ?? '' },
-      mei: { base: saved.mei?.base ?? '', token: saved.mei?.token ?? '' }
+      giulia: { base: saved.giulia?.base ?? DEFAULT_BACKENDS.giulia, token: saved.giulia?.token ?? localStorage.getItem('giuliaLabToken') ?? '' },
+      mei: { base: saved.mei?.base || DEFAULT_BACKENDS.mei, token: saved.mei?.token ?? '' }
     };
   } catch {
-    return { giulia: { base: '', token: '' }, mei: { base: '', token: '' } };
+    return {
+      giulia: { base: DEFAULT_BACKENDS.giulia, token: '' },
+      mei: { base: DEFAULT_BACKENDS.mei, token: '' }
+    };
   }
 }
 
@@ -61,7 +66,7 @@ function cleanBase(value) {
 }
 
 function connection(agentId = selectedAgent) {
-  return connections[agentId] || { base: '', token: '' };
+  return connections[agentId] || { base: DEFAULT_BACKENDS[agentId] || '', token: '' };
 }
 
 function resolvedBase(agentId = selectedAgent) {
@@ -171,15 +176,19 @@ agentSelect.addEventListener('change', () => {
 
 saveConnection.addEventListener('click', async () => {
   connections[selectedAgent] = {
-    base: cleanBase(backendUrl.value),
+    base: cleanBase(backendUrl.value) || DEFAULT_BACKENDS[selectedAgent] || '',
     token: labToken.value.trim()
   };
   persistConnections();
+  syncConnectionInputs();
   await checkBackend();
 });
 
 clearConnection.addEventListener('click', () => {
-  connections[selectedAgent] = { base: '', token: '' };
+  connections[selectedAgent] = {
+    base: DEFAULT_BACKENDS[selectedAgent] || '',
+    token: ''
+  };
   persistConnections();
   syncConnectionInputs();
   renderAgent();
