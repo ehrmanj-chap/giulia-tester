@@ -108,8 +108,8 @@ function latestUser(messages) {
 
 function routeFor(messages) {
   const recent = messages.filter(m => m.role === 'user').slice(-3).map(m => m.content).join(' ').toLowerCase();
-  const business = /\b(business|company|companies|work|workplace|office|manager|meeting|negotiat|client|professional|market|econom|tax|legal|regulat|hiring|hire|salary|employment|supplier|contract|corporate|intern|management|decision|nemawashi|ringi|ringisho|meishi|business card|keigo at work|honorific at work)\b/.test(recent);
-  const cultural = /\b(culture|cultural|etiquette|social|friend|family|religion|shinto|buddh|shrine|temple|tradition|custom|language|japanese phrase|keigo|gesture|bow|gift|dining|food|festival|regional|communication|silence|honne|tatemae|relationship|dating)\b/.test(recent);
+  const business = /(\bbusiness\b|\bcompan(?:y|ies)\b|\bwork(?:place)?\b|\boffice\b|\bmanager\b|\bmeeting\b|negotiat\w*|\bclient\b|\bprofessional\b|\bmarket\b|econom\w*|\btax\w*\b|\blegal\b|regulat\w*|\bhir(?:e|ing)\b|\bsalary\b|\bemployment\b|\bsupplier\b|\bcontract\b|\bcorporate\b|\bintern\w*|\bmanagement\b|\bdecision\w*|\bnemawashi\b|\bringi(?:sho)?\b|\bmeishi\b|business card|keigo at work|honorific at work)/.test(recent);
+  const cultural = /(\bcultur\w*|\betiquette\b|\bsocial\b|\bfriend\w*|\bfamily\b|\breligion\w*|\bshinto\b|buddh\w*|\bshrine\b|\btemple\b|\btradition\w*|\bcustom\w*|\blanguage\b|japanese phrase|\bkeigo\b|\bgesture\w*|\bbow\w*|\bgift\w*|\bdining\b|\bfood\b|\bfestival\w*|\bregional\b|\bcommunication\b|\bsilence\b|\bhonne\b|\btatemae\b|\brelationship\w*|\bdating\b)/.test(recent);
   const explicitlyUnrelated = /\b(javascript|python|debug my code|weather forecast|solve this equation|minecraft|recipe for|medical diagnosis)\b/.test(recent);
   if (business && cultural) return 'both';
   if (business) return 'business';
