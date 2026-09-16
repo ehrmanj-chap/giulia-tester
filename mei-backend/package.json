@@ -1,0 +1,14 @@
+{
+  "name": "mei-cultural-agent-backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Isolated Japan cultural/business intelligence backend for the unlisted dual-agent lab.",
+  "scripts": {
+    "start": "node server.mjs",
+    "dev": "node server.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
