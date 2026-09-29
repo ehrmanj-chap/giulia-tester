@@ -6,82 +6,46 @@
   <meta name="robots" content="noindex,nofollow,noarchive" />
   <title>Cultural Agent Lab</title>
   <link rel="stylesheet" href="./styles.css" />
+  <style>
+    .lab-tabs{display:flex;gap:.6rem;margin:1rem 0}.lab-tab{opacity:.65}.lab-tab.active{opacity:1}.lab-panel.hidden{display:none}.verity-card{background:var(--panel,#121826);border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:1rem;margin-top:1rem}.verity-head,.verity-controls{display:flex;gap:.75rem;justify-content:space-between;align-items:center;flex-wrap:wrap}.verity-controls label{display:flex;gap:.5rem;align-items:center}.verity-controls input{width:4rem}.verity-progress{width:100%;margin:.8rem 0}.verity-agent-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.7rem;margin:.8rem 0}.verity-agent-summary>div{padding:.75rem;border:1px solid rgba(255,255,255,.1);border-radius:12px;display:flex;flex-direction:column;gap:.25rem}.verity-recent{font-size:.86rem}.verity-row{display:flex;gap:.75rem;justify-content:space-between;padding:.35rem 0;border-top:1px solid rgba(255,255,255,.08)}@media(max-width:700px){.verity-agent-summary{grid-template-columns:1fr}.verity-row{display:block}}
+  </style>
 </head>
 <body>
   <main class="shell">
     <header class="topbar">
-      <div>
-        <div class="eyebrow">PRIVATE / UNLISTED TEST UI</div>
-        <h1>Cultural Agent Lab</h1>
-        <p class="lede">One quiet test surface for the Italy and Japan agents. This page is intentionally not linked from the existing Giulia tester.</p>
-      </div>
-
-      <label class="agent-picker">
-        <span>Agent</span>
-        <select id="agentSelect" aria-label="Choose cultural agent">
-          <option value="giulia">🇮🇹 Giulia · Italy</option>
-          <option value="mei">🇯🇵 Mei · Japan</option>
-        </select>
-      </label>
+      <div><div class="eyebrow">PRIVATE / UNLISTED TEST UI</div><h1>Cultural Agent Lab</h1><p class="lede">One test surface for Giulia and Mei: live chat plus the dual-agent information-verity battery.</p></div>
+      <label class="agent-picker"><span>Agent</span><select id="agentSelect" aria-label="Choose cultural agent"><option value="giulia">🇮🇹 Giulia · Italy</option><option value="mei">🇯🇵 Mei · Japan</option></select></label>
     </header>
 
-    <section class="status-card">
-      <div>
-        <div class="agent-line">
-          <span id="agentGlyph" class="agent-glyph">🇮🇹</span>
-          <div>
-            <strong id="agentName">Giulia</strong>
-            <div id="agentDescription" class="muted">Italian cultural + business intelligence</div>
-          </div>
-        </div>
-      </div>
-      <div class="status-right">
-        <span id="routeBadge" class="badge hidden">route</span>
-        <span id="backendStatus" class="status-pill neutral">Not checked</span>
-      </div>
+    <section class="status-card"><div class="agent-line"><span id="agentGlyph" class="agent-glyph">🇮🇹</span><div><strong id="agentName">Giulia</strong><div id="agentDescription" class="muted">Italian cultural + business intelligence</div></div></div><div class="status-right"><span id="routeBadge" class="badge hidden">route</span><span id="backendStatus" class="status-pill neutral">Not checked</span></div></section>
+
+    <details class="connection-card"><summary>Backend connection</summary><div class="connection-grid"><label>Backend URL<input id="backendUrl" type="url" placeholder="https://agent-backend.example.com" /><small id="backendHint"></small></label><label>Lab token <span class="muted-inline">optional</span><input id="labToken" type="password" autocomplete="off" placeholder="Stored only in this browser" /></label></div><div class="connection-actions"><button id="saveConnection" type="button">Save + connect</button><button id="clearConnection" class="ghost" type="button">Clear selected agent</button></div></details>
+
+    <nav class="lab-tabs" aria-label="Tester mode"><button id="chatTab" class="lab-tab active" type="button">Interactive chat</button><button id="verityTab" class="lab-tab" type="button">400-case verity</button></nav>
+
+    <section id="chatPanel" class="lab-panel">
+      <section class="chat-card"><div id="messages" class="messages" aria-live="polite"></div><form id="chatForm" class="composer"><textarea id="input" rows="3" placeholder="Ask the selected agent…" autofocus></textarea><button id="send" type="submit">Send</button></form><div class="chat-actions"><button id="resetChat" class="ghost" type="button">Reset selected chat</button><button id="checkBackend" class="ghost" type="button">Check backend</button></div></section>
+      <details class="diagnostics-card"><summary>Diagnostics</summary><pre id="diagnostics">No run yet.</pre></details>
     </section>
 
-    <details class="connection-card">
-      <summary>Backend connection</summary>
-      <div class="connection-grid">
-        <label>
-          Backend URL
-          <input id="backendUrl" type="url" placeholder="https://agent-backend.example.com" />
-          <small id="backendHint">Giulia defaults to this page's origin when left blank.</small>
-        </label>
-        <label>
-          Lab token <span class="muted-inline">optional</span>
-          <input id="labToken" type="password" autocomplete="off" placeholder="Stored only in this browser" />
-        </label>
-      </div>
-      <div class="connection-actions">
-        <button id="saveConnection" type="button">Save + connect</button>
-        <button id="clearConnection" class="ghost" type="button">Clear selected agent</button>
-      </div>
-    </details>
-
-    <section class="chat-card">
-      <div id="messages" class="messages" aria-live="polite"></div>
-      <form id="chatForm" class="composer">
-        <textarea id="input" rows="3" placeholder="Ask the selected agent…" autofocus></textarea>
-        <button id="send" type="submit">Send</button>
-      </form>
-      <div class="chat-actions">
-        <button id="resetChat" class="ghost" type="button">Reset selected chat</button>
-        <button id="checkBackend" class="ghost" type="button">Check backend</button>
-      </div>
+    <section id="verityPanel" class="lab-panel hidden">
+      <section class="verity-card">
+        <div class="verity-head"><div><div class="eyebrow">INFORMATION VERITY + VOICE</div><h2>Dual-agent RAG battery</h2><p class="muted"><span id="suiteCount">400 cases</span>. Each case is a fresh conversation. The hand-back JSON preserves full replies, routes, retrieval diagnostics, latency/errors, and lightweight prose metrics for personality/prosody review.</p></div></div>
+        <p class="muted">This is a real 400-call run, not a mock. Both configured backends must be healthy. Mei’s current corpus is much smaller than Giulia’s, so failures are useful coverage signals rather than something the runner hides.</p>
+        <div class="verity-controls"><label>Parallel calls per agent <input id="verityConcurrency" type="number" min="1" max="4" value="2" /></label><div><button id="runVerity" type="button">Run all 400 once</button> <button id="stopVerity" class="ghost" type="button" disabled>Stop launching</button> <button id="downloadVerity" class="ghost" type="button" disabled>Download hand-back JSON</button> <button id="clearVerity" class="ghost" type="button">Clear</button></div></div>
+        <progress id="verityProgress" class="verity-progress" value="0" max="400"></progress><div id="veritySummary" class="muted">Ready.</div><div id="verityAgentSummary" class="verity-agent-summary"></div><div id="verityRecent" class="verity-recent"></div>
+        <p class="muted">When it finishes, the JSON downloads automatically. Upload that file back here and I can inspect both the technical failures and whether Giulia/Mei still sound like themselves rather than two extremely credentialed municipal kiosks.</p>
+      </section>
     </section>
 
-    <details class="diagnostics-card">
-      <summary>Diagnostics</summary>
-      <pre id="diagnostics">No run yet.</pre>
-    </details>
-
-    <footer>
-      Unlisted test surface. No navigation from the existing public or tester pages points here.
-    </footer>
+    <footer>Private test surface. The old single-Giulia tester has been retired in favor of this dual lab.</footer>
   </main>
-
   <script src="./app.js" type="module"></script>
+  <script type="module">
+    const chatTab=document.querySelector('#chatTab'),verityTab=document.querySelector('#verityTab'),chat=document.querySelector('#chatPanel'),verity=document.querySelector('#verityPanel');
+    function show(which){const v=which==='verity';chat.classList.toggle('hidden',v);verity.classList.toggle('hidden',!v);chatTab.classList.toggle('active',!v);verityTab.classList.toggle('active',v)}
+    chatTab.addEventListener('click',()=>show('chat'));verityTab.addEventListener('click',()=>show('verity'));
+  </script>
+  <script src="./verity.js" type="module"></script>
 </body>
 </html>
