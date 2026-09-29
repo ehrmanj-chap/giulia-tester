@@ -10,12 +10,13 @@ import { createGiulia } from './lib/giulia.mjs';
 const rootDir = path.dirname(fileURLToPath(import.meta.url));
 process.chdir(rootDir);
 loadDotEnv(path.join(rootDir, '.env'));
+const { default: meiHandler } = await import('./mei-backend/server.mjs');
 const config = getConfig(rootDir);
 const provider = createProvider(config);
 const giulia = createGiulia({ config, provider });
 const publicDir = path.join(rootDir, 'public');
 
-const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8' };
+const mime = { '.png': 'image/png', '.svg': 'image/svg+xml', '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8' };
 function corsHeaders(req) {
   const requested = req.headers.origin || '';
   const allowed = config.allowedOrigin === '*' ? '*' : config.allowedOrigin;
@@ -33,7 +34,7 @@ async function readBody(req, maxBytes = 2_000_000) { const chunks = []; let size
 function activeModels() { return config.provider === 'ollama' ? { model: config.ollama.model, routerModel: config.ollama.routerModel } : { model: config.qwen.model, routerModel: config.qwen.routerModel }; }
 function serveStatic(req, res) {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-  let pathname = decodeURIComponent(url.pathname); if (pathname === '/') pathname = '/index.html';
+  let pathname = decodeURIComponent(url.pathname); if (pathname.endsWith('/')) pathname += 'index.html';
   const target = path.resolve(publicDir, `.${pathname}`);
   if (!target.startsWith(publicDir + path.sep) && target !== path.join(publicDir, 'index.html')) { res.writeHead(403); return res.end('Forbidden'); }
   if (!fs.existsSync(target) || !fs.statSync(target).isFile()) { res.writeHead(404); return res.end('Not found'); }
@@ -44,6 +45,12 @@ function serveStatic(req, res) {
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+    if (url.pathname.startsWith('/api/mei/')) {
+      const originalUrl = req.url;
+      req.url = req.url.replace(/^\/api\/mei\//, '/api/');
+      try { return await meiHandler(req, res); }
+      finally { req.url = originalUrl; }
+    }
     if (req.method === 'OPTIONS' && url.pathname.startsWith('/api/')) { res.writeHead(204, cleanHeaders(corsHeaders(req))); return res.end(); }
     if (url.pathname.startsWith('/api/') && !authorized(req)) return sendJson(req, res, 401, { error: 'Invalid or missing Giulia lab token.' });
     if (req.method === 'GET' && url.pathname === '/api/status') {

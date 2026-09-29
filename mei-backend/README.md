@@ -36,17 +36,17 @@ Default local URL: `http://127.0.0.1:8791`.
 
 ## Current corpus state
 
-This first seed intentionally contains only a small slice of Kelsie's larger Drive corpus so the backend can be exercised before full ingestion:
+The 2026-09-29 Drive snapshot contains **74 cultural documents and 80 business documents**,
+covering 37 cultural and 40 business topics. The compressed snapshots preserve extracted
+PDF text and provenance. `knowledge/manifest.json` records the source inventory and hashes.
+The loader uses these snapshots; the original four Markdown seed files are historical only.
 
-Cultural:
-- Workplace Japanese and Keigo
-- Shinto, Buddhism and Spirituality
+The root Giulia server also serves this backend under `/api/mei/status` and
+`/api/mei/chat`, allowing the dual lab to use one deployed origin. Standalone
+hosting from this directory remains supported via `api/index.js` and `vercel.json`.
 
-Business:
-- Nemawashi and Ringi
-- Meishi exchange
-
-The source Drive tree is much larger. Add further `.md` or `.txt` files under `knowledge/cultural/` or `knowledge/business/`; they are loaded automatically at process start.
+See [the corpus and lab handoff](../docs/MEI_CORPUS_AND_LAB_HANDOFF.md) for deployment,
+reimport, validation, and evaluation details.
 
 ## Routing
 

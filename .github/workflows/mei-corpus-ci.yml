@@ -1,0 +1,36 @@
+name: Mei corpus validation
+on:
+  push:
+    branches: ['main', 'mei/full-drive-corpus-20260929']
+  pull_request:
+    paths:
+      - 'mei-backend/**'
+      - 'tests/**'
+      - 'public/dual-lab/**'
+      - 'server.mjs'
+      - 'scripts/import-mei-corpus.py'
+      - '.github/workflows/mei-corpus-ci.yml'
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: ['20', '24']
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Offline tests only (no model calls)
+        run: npm test
+      - name: Export tracked source for local import verification
+        if: matrix.node == '24'
+        run: git archive --format=tar.gz --output=/tmp/mei-base-source.tar.gz HEAD
+      - uses: actions/upload-artifact@v4
+        if: matrix.node == '24'
+        with:
+          name: mei-base-source
+          path: /tmp/mei-base-source.tar.gz
+          retention-days: 1

@@ -1,262 +1,70 @@
-import { DEFAULT_BACKENDS, defaultBackendFor } from './backend-defaults.js';
-
-const $ = selector => document.querySelector(selector);
-
+import { defaultBackendFor, loadConnections, saveConnections, endpointUrl } from './backend-defaults.js';
+const $ = s => document.querySelector(s);
 const AGENTS = {
-  giulia: {
-    name: 'Giulia',
-    glyph: '🇮🇹',
-    description: 'Italian cultural + business intelligence',
-    backendHint: 'Giulia uses this origin automatically when the lab is served by the local/backend server. GitHub Pages still needs an explicit hosted Giulia URL.'
-  },
-  mei: {
-    name: 'Mei',
-    glyph: '🇯🇵',
-    description: 'Japanese cultural + business intelligence',
-    backendHint: 'Mei defaults to the hosted Vercel backend. If it says Vercel auth required, Deployment Protection is intercepting the API.'
-  }
+  giulia:{name:'Giulia',label:'Giulia (Italy Expert)',country:'ITALY',description:'Italian cultural and business intelligence',welcome:'Ciao! What would you like to explore about life, culture, or business in Italy?'},
+  mei:{name:'Mei',label:'Mei (Japan Expert)',country:'JAPAN',description:'Japanese cultural and business intelligence',welcome:'Konnichiwa! What would you like to explore about daily life, culture, or business in Japan?'}
 };
-
-const STORAGE_KEY = 'culturalAgentLab.connections.v1';
-const agentSelect = $('#agentSelect');
-const agentGlyph = $('#agentGlyph');
-const agentName = $('#agentName');
-const agentDescription = $('#agentDescription');
-const backendStatus = $('#backendStatus');
-const routeBadge = $('#routeBadge');
-const backendUrl = $('#backendUrl');
-const backendHint = $('#backendHint');
-const labToken = $('#labToken');
-const saveConnection = $('#saveConnection');
-const clearConnection = $('#clearConnection');
-const checkBackendButton = $('#checkBackend');
-const messagesEl = $('#messages');
-const form = $('#chatForm');
-const input = $('#input');
-const send = $('#send');
-const resetChat = $('#resetChat');
-const diagnostics = $('#diagnostics');
-
-const histories = { giulia: [], mei: [] };
-let selectedAgent = 'giulia';
-
-function loadConnections() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-    return {
-      giulia: { base: saved.giulia?.base || defaultBackendFor('giulia'), token: saved.giulia?.token ?? localStorage.getItem('giuliaLabToken') ?? '' },
-      mei: { base: saved.mei?.base || defaultBackendFor('mei'), token: saved.mei?.token ?? '' }
-    };
-  } catch {
-    return {
-      giulia: { base: defaultBackendFor('giulia'), token: '' },
-      mei: { base: defaultBackendFor('mei'), token: '' }
-    };
-  }
+let selectedAgent='giulia', connections=loadConnections();
+const histories={giulia:[],mei:[]}, pending={giulia:false,mei:false}, health={giulia:null,mei:null}, checkIds={giulia:0,mei:0}, runDiagnostics={giulia:null,mei:null}, drafts={giulia:'',mei:''};
+function renderMessages(){
+  const box=$('#messages');box.replaceChildren();
+  if(!histories[selectedAgent].length){const p=document.createElement('p');p.className='system-note';p.textContent=AGENTS[selectedAgent].welcome;box.append(p);}
+  for(const m of histories[selectedAgent]){const el=document.createElement('div');el.className=`msg ${m.role}`;el.textContent=m.content;box.append(el);}
+  box.scrollTop=box.scrollHeight;
 }
-
-let connections = loadConnections();
-
-function persistConnections() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(connections));
+function renderHealth(){
+  const h=health[selectedAgent], s=$('#backendStatus');s.textContent=h?.label||'Not connected';s.className=`status-pill ${h?.tone||'neutral'}`;
+  $('#connectionDetails').textContent=h?.detail||'';
+  $('#send').disabled=pending[selectedAgent]||h?.tone!=='ok';$('#send').textContent=pending[selectedAgent]?'Thinking…':'Send';
+  $('#resetChat').disabled=pending[selectedAgent];
 }
-
-function cleanBase(value) {
-  return String(value || '').trim().replace(/\/$/, '');
+function render(){
+  const a=AGENTS[selectedAgent];$('#agentName').textContent=a.label;$('#agentCountry').textContent=a.country;$('#agentDescription').textContent=a.description;
+  $('#agentPortrait').src=`./assets/${selectedAgent}.png`;$('#agentPortrait').alt=a.name;$('#agentSelect').value=selectedAgent;
+  $('#input').placeholder=`Ask ${a.name}…`;$('#input').value=drafts[selectedAgent];
+  $('#backendUrl').value=connections[selectedAgent].base;$('#labToken').value=connections[selectedAgent].token;
+  $('#backendHint').textContent=selectedAgent==='mei'?'The updated lab serves Mei at /api/mei. A standalone Mei backend can also be configured.':'Uses the current origin on a backend host. GitHub Pages needs a hosted Giulia URL.';
+  $('#diagnostics').textContent=runDiagnostics[selectedAgent]?JSON.stringify(runDiagnostics[selectedAgent],null,2):'No response yet.';
+  $('#routeBadge').classList.toggle('hidden',!runDiagnostics[selectedAgent]);$('#routeBadge').textContent=runDiagnostics[selectedAgent]?.route||'';
+  renderMessages();renderHealth();
 }
-
-function connection(agentId = selectedAgent) {
-  return connections[agentId] || { base: defaultBackendFor(agentId), token: '' };
+async function request(agent,path,options={}){
+  const c=connections[agent];if(!c.base)throw new Error('Backend URL is not configured. Open Internal lab tools to connect.');
+  const headers={'Content-Type':'application/json',...(c.token?{'X-Giulia-Lab-Token':c.token}:{})};
+  const res=await fetch(endpointUrl(c.base,path),{...options,headers,signal:AbortSignal.timeout(path==='/api/status'?20000:240000)});
+  if(!(res.headers.get('content-type')||'').includes('application/json'))throw new Error(`Backend returned a non-JSON response (HTTP ${res.status}); check its URL and Vercel access.`);
+  const data=await res.json();if(!res.ok||data.ok===false)throw new Error(data.error||`HTTP ${res.status}`);return data;
 }
-
-function resolvedBase(agentId = selectedAgent) {
-  return connection(agentId).base || null;
+async function checkBackend(agent=selectedAgent){
+  const check=++checkIds[agent];health[agent]={label:'Connecting…',tone:'neutral'};if(agent===selectedAgent)renderHealth();
+  try{const d=await request(agent,'/api/status');if(check!==checkIds[agent])return;
+    const k=d.knowledge;health[agent]={label:'Connected',tone:'ok',detail:`${AGENTS[agent].name}: ${k?.cultural?.documents??'?'} cultural · ${k?.business?.documents??'?'} business documents${d.corpusVersion?` · ${d.corpusVersion}`:''}`};
+  }catch(e){if(check!==checkIds[agent])return;health[agent]={label:'Connection unavailable',tone:'bad',detail:e.message};}
+  if(agent===selectedAgent)renderHealth();
 }
-
-function apiUrl(path, agentId = selectedAgent) {
-  const base = resolvedBase(agentId);
-  if (base === null) throw new Error(`${AGENTS[agentId].name} backend is not configured.`);
-  return `${base}${path}`;
+function selectAgent(agent,openChat=true){
+  drafts[selectedAgent]=$('#input').value;selectedAgent=agent;render();
+  if(openChat){$('#expertSelection').classList.add('hidden');$('#chatPanel').classList.remove('hidden');$('#input').focus();}
+  checkBackend(agent);
 }
-
-function apiHeaders(json = false, agentId = selectedAgent) {
-  const headers = {};
-  if (json) headers['Content-Type'] = 'application/json';
-  const token = connection(agentId).token;
-  if (token) headers['X-Giulia-Lab-Token'] = token;
-  return headers;
-}
-
-async function apiFetch(path, options = {}, agentId = selectedAgent) {
-  const headers = { ...apiHeaders(Boolean(options.body), agentId), ...(options.headers || {}) };
-  return fetch(apiUrl(path, agentId), { ...options, headers });
-}
-
-function setBackendState(text, tone = 'neutral') {
-  backendStatus.textContent = text;
-  backendStatus.className = `status-pill ${tone}`;
-}
-
-function addMessage(role, content) {
-  const el = document.createElement('div');
-  el.className = `msg ${role}`;
-  el.textContent = content;
-  messagesEl.appendChild(el);
-}
-
-function renderMessages() {
-  messagesEl.innerHTML = '';
-  const history = histories[selectedAgent];
-  if (!history.length) {
-    const note = document.createElement('div');
-    note.className = 'system-note';
-    note.textContent = `${AGENTS[selectedAgent].name} conversation ready.`;
-    messagesEl.appendChild(note);
-  } else {
-    for (const message of history) addMessage(message.role, message.content);
-  }
-  messagesEl.scrollTop = messagesEl.scrollHeight;
-}
-
-function syncConnectionInputs() {
-  const current = connection();
-  backendUrl.value = current.base;
-  labToken.value = current.token;
-  backendHint.textContent = AGENTS[selectedAgent].backendHint;
-}
-
-function renderAgent() {
-  const agent = AGENTS[selectedAgent];
-  agentGlyph.textContent = agent.glyph;
-  agentName.textContent = agent.name;
-  agentDescription.textContent = agent.description;
-  input.placeholder = `Ask ${agent.name}…`;
-  routeBadge.classList.add('hidden');
-  diagnostics.textContent = 'No run yet.';
-  syncConnectionInputs();
-  renderMessages();
-
-  if (resolvedBase() === null) {
-    setBackendState('Backend not configured', 'warn');
-    send.disabled = true;
-  } else {
-    setBackendState('Not checked', 'neutral');
-    send.disabled = false;
-    checkBackend();
-  }
-}
-
-async function checkBackend() {
-  if (resolvedBase() === null) {
-    setBackendState('Backend not configured', 'warn');
-    send.disabled = true;
-    return;
-  }
-
-  setBackendState('Checking…', 'neutral');
-  try {
-    const res = await apiFetch('/api/status');
-    const contentType = res.headers.get('content-type') || '';
-    if (!contentType.includes('application/json')) {
-      const text = await res.text();
-      if (/vercel|log in to vercel|deployment protection/i.test(text)) {
-        throw new Error('Vercel auth required — Deployment Protection is intercepting this backend.');
-      }
-      throw new Error(`Expected JSON from backend, received ${contentType || 'non-JSON response'} (HTTP ${res.status}).`);
-    }
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-    const culture = data.knowledge?.cultural?.documents ?? '?';
-    const business = data.knowledge?.business?.documents ?? '?';
-    setBackendState(`Connected · C ${culture} · B ${business}`, 'ok');
-    send.disabled = false;
-  } catch (error) {
-    setBackendState(`Unavailable · ${error.message}`, 'bad');
-    send.disabled = true;
-  }
-}
-
-agentSelect.addEventListener('change', () => {
-  selectedAgent = agentSelect.value;
-  renderAgent();
-  input.focus();
+for(const card of document.querySelectorAll('[data-agent]'))card.addEventListener('click',()=>selectAgent(card.dataset.agent));
+$('#changeExpert').addEventListener('click',()=>{$('#chatPanel').classList.add('hidden');$('#expertSelection').classList.remove('hidden');$('#selectionHeading').focus();});
+$('#agentSelect').addEventListener('change',()=>selectAgent($('#agentSelect').value,false));
+$('#saveConnection').addEventListener('click',()=>{
+  const base=$('#backendUrl').value.trim().replace(/\/+$/,'')||defaultBackendFor(selectedAgent);
+  if(base){try{const u=new URL(base);if(!['http:','https:'].includes(u.protocol))throw Error();}catch{$('#connectionDetails').textContent='Enter a valid http or https backend URL.';return;}}
+  connections[selectedAgent]={base,token:$('#labToken').value.trim()};saveConnections(connections);render();checkBackend();
 });
-
-saveConnection.addEventListener('click', async () => {
-  connections[selectedAgent] = {
-    base: cleanBase(backendUrl.value) || defaultBackendFor(selectedAgent),
-    token: labToken.value.trim()
-  };
-  persistConnections();
-  syncConnectionInputs();
-  await checkBackend();
+$('#clearConnection').addEventListener('click',()=>{connections[selectedAgent]={base:defaultBackendFor(selectedAgent),token:''};saveConnections(connections);render();checkBackend();});
+$('#checkBackend').addEventListener('click',()=>checkBackend());
+$('#resetChat').addEventListener('click',()=>{if(pending[selectedAgent])return;histories[selectedAgent]=[];runDiagnostics[selectedAgent]=null;drafts[selectedAgent]='';render();$('#input').focus();});
+$('#input').addEventListener('input',()=>drafts[selectedAgent]=$('#input').value);
+$('#input').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();$('#chatForm').requestSubmit();}});
+$('#chatForm').addEventListener('submit',async e=>{
+  e.preventDefault();const agent=selectedAgent,text=$('#input').value.trim();if(!text||pending[agent]||health[agent]?.tone!=='ok')return;
+  histories[agent].push({role:'user',content:text});drafts[agent]='';$('#input').value='';pending[agent]=true;renderMessages();renderHealth();
+  try{const d=await request(agent,'/api/chat',{method:'POST',body:JSON.stringify({messages:histories[agent].filter(m=>!m.error)})});if(typeof d.reply!=='string'||!d.reply.trim())throw new Error('Backend returned an empty reply.');histories[agent].push({role:'assistant',content:d.reply});runDiagnostics[agent]={agent,runId:d.runId,route:d.route,diagnostics:d.diagnostics};}
+  catch(e){histories[agent].push({role:'assistant',content:`The response could not be completed: ${e.message}`,error:true});}
+  finally{pending[agent]=false;if(selectedAgent===agent){render();$('#input').focus();}}
 });
-
-clearConnection.addEventListener('click', () => {
-  connections[selectedAgent] = {
-    base: defaultBackendFor(selectedAgent),
-    token: ''
-  };
-  persistConnections();
-  syncConnectionInputs();
-  renderAgent();
-});
-
-checkBackendButton.addEventListener('click', checkBackend);
-
-resetChat.addEventListener('click', () => {
-  histories[selectedAgent] = [];
-  routeBadge.classList.add('hidden');
-  diagnostics.textContent = 'No run yet.';
-  renderMessages();
-  input.focus();
-});
-
-input.addEventListener('keydown', event => {
-  if (event.key === 'Enter' && !event.shiftKey) {
-    event.preventDefault();
-    form.requestSubmit();
-  }
-});
-
-form.addEventListener('submit', async event => {
-  event.preventDefault();
-  const text = input.value.trim();
-  if (!text || resolvedBase() === null) return;
-
-  const agentAtSend = selectedAgent;
-  histories[agentAtSend].push({ role: 'user', content: text });
-  input.value = '';
-  renderMessages();
-  send.disabled = true;
-  send.textContent = 'Thinking…';
-
-  try {
-    const res = await apiFetch('/api/chat', {
-      method: 'POST',
-      body: JSON.stringify({ messages: histories[agentAtSend] })
-    }, agentAtSend);
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-
-    histories[agentAtSend].push({ role: 'assistant', content: data.reply });
-    if (selectedAgent === agentAtSend) {
-      routeBadge.textContent = `route: ${data.route ?? 'unknown'}`;
-      routeBadge.classList.remove('hidden');
-      diagnostics.textContent = JSON.stringify({ agent: agentAtSend, runId: data.runId, route: data.route, diagnostics: data.diagnostics }, null, 2);
-      renderMessages();
-    }
-  } catch (error) {
-    histories[agentAtSend].push({ role: 'assistant', content: `[Backend error] ${error.message}` });
-    if (selectedAgent === agentAtSend) renderMessages();
-  } finally {
-    if (selectedAgent === agentAtSend) {
-      send.disabled = resolvedBase() === null;
-      send.textContent = 'Send';
-      input.focus();
-    }
-  }
-});
-
-agentSelect.value = selectedAgent;
-renderAgent();
+render();
