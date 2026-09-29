@@ -1,4 +1,4 @@
-import { DEFAULT_BACKENDS } from './backend-defaults.js';
+import { DEFAULT_BACKENDS, defaultBackendFor } from './backend-defaults.js';
 
 const $ = selector => document.querySelector(selector);
 
@@ -7,13 +7,13 @@ const AGENTS = {
     name: 'Giulia',
     glyph: '🇮🇹',
     description: 'Italian cultural + business intelligence',
-    backendHint: 'Giulia requires an explicit hosted backend URL. GitHub Pages is static and is never treated as the API.'
+    backendHint: 'Giulia uses this origin automatically when the lab is served by the local/backend server. GitHub Pages still needs an explicit hosted Giulia URL.'
   },
   mei: {
     name: 'Mei',
     glyph: '🇯🇵',
     description: 'Japanese cultural + business intelligence',
-    backendHint: 'Mei defaults to the hosted Vercel backend. You can override the URL here for testing.'
+    backendHint: 'Mei defaults to the hosted Vercel backend. If it says Vercel auth required, Deployment Protection is intercepting the API.'
   }
 };
 
@@ -44,13 +44,13 @@ function loadConnections() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
     return {
-      giulia: { base: saved.giulia?.base ?? DEFAULT_BACKENDS.giulia, token: saved.giulia?.token ?? localStorage.getItem('giuliaLabToken') ?? '' },
-      mei: { base: saved.mei?.base || DEFAULT_BACKENDS.mei, token: saved.mei?.token ?? '' }
+      giulia: { base: saved.giulia?.base || defaultBackendFor('giulia'), token: saved.giulia?.token ?? localStorage.getItem('giuliaLabToken') ?? '' },
+      mei: { base: saved.mei?.base || defaultBackendFor('mei'), token: saved.mei?.token ?? '' }
     };
   } catch {
     return {
-      giulia: { base: DEFAULT_BACKENDS.giulia, token: '' },
-      mei: { base: DEFAULT_BACKENDS.mei, token: '' }
+      giulia: { base: defaultBackendFor('giulia'), token: '' },
+      mei: { base: defaultBackendFor('mei'), token: '' }
     };
   }
 }
@@ -66,7 +66,7 @@ function cleanBase(value) {
 }
 
 function connection(agentId = selectedAgent) {
-  return connections[agentId] || { base: DEFAULT_BACKENDS[agentId] || '', token: '' };
+  return connections[agentId] || { base: defaultBackendFor(agentId), token: '' };
 }
 
 function resolvedBase(agentId = selectedAgent) {
@@ -156,6 +156,14 @@ async function checkBackend() {
   setBackendState('Checking…', 'neutral');
   try {
     const res = await apiFetch('/api/status');
+    const contentType = res.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      const text = await res.text();
+      if (/vercel|log in to vercel|deployment protection/i.test(text)) {
+        throw new Error('Vercel auth required — Deployment Protection is intercepting this backend.');
+      }
+      throw new Error(`Expected JSON from backend, received ${contentType || 'non-JSON response'} (HTTP ${res.status}).`);
+    }
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
     const culture = data.knowledge?.cultural?.documents ?? '?';
@@ -176,7 +184,7 @@ agentSelect.addEventListener('change', () => {
 
 saveConnection.addEventListener('click', async () => {
   connections[selectedAgent] = {
-    base: cleanBase(backendUrl.value) || DEFAULT_BACKENDS[selectedAgent] || '',
+    base: cleanBase(backendUrl.value) || defaultBackendFor(selectedAgent),
     token: labToken.value.trim()
   };
   persistConnections();
@@ -186,7 +194,7 @@ saveConnection.addEventListener('click', async () => {
 
 clearConnection.addEventListener('click', () => {
   connections[selectedAgent] = {
-    base: DEFAULT_BACKENDS[selectedAgent] || '',
+    base: defaultBackendFor(selectedAgent),
     token: ''
   };
   persistConnections();
