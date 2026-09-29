@@ -27,8 +27,8 @@ loadDotEnv(path.join(rootDir, '.env'));
 const config = {
   host: process.env.HOST || '127.0.0.1',
   port: Number(process.env.PORT || 8791),
-  allowedOrigin: process.env.MEI_ALLOWED_ORIGIN || '*',
-  labToken: process.env.MEI_LAB_TOKEN || '',
+  allowedOrigin: process.env.MEI_ALLOWED_ORIGIN || process.env.GIULIA_ALLOWED_ORIGIN || '*',
+  labToken: process.env.MEI_LAB_TOKEN || process.env.GIULIA_LAB_TOKEN || '',
   diagnostics: !['0', 'false', 'off', 'no'].includes(String(process.env.MEI_DEV_DIAGNOSTICS || 'true').toLowerCase()),
   qwen: {
     apiKey: process.env.DASHSCOPE_API_KEY || '',

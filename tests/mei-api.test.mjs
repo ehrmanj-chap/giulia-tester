@@ -25,3 +25,9 @@ test('Mei HTTP handler preserves token auth and sends bounded source evidence to
   const sources=response.diagnostics.calls[0].retrieval;assert.ok(sources.every(s=>s.id&&s.sourceUrl&&Number.isInteger(s.chunk)));
  }finally{server.closeAllConnections();provider.closeAllConnections();await Promise.all([new Promise(r=>server.close(r)),new Promise(r=>provider.close(r))]);}
 });
+
+test('Mei inherits Giulia token protection when a Mei token is not configured',async()=>{
+ const {spawn}=await import('node:child_process');
+ const code=`process.env.GIULIA_LAB_TOKEN='inherited-token';delete process.env.MEI_LAB_TOKEN;process.env.DASHSCOPE_API_KEY='fixture';process.env.QWEN_BASE_URL='https://example.invalid';const http=await import('node:http');const {default:handler}=await import('./mei-backend/server.mjs');const server=http.createServer(handler);await new Promise(r=>server.listen(0,'127.0.0.1',r));const base='http://127.0.0.1:'+server.address().port;try{const denied=await fetch(base+'/api/status');const accepted=await fetch(base+'/api/status',{headers:{'X-Giulia-Lab-Token':'inherited-token'}});if(denied.status!==401||accepted.status!==200)process.exitCode=1;}finally{server.closeAllConnections();server.close();}`;
+ const child=spawn(process.execPath,['--input-type=module','-e',code],{cwd:new URL('..',import.meta.url),stdio:'pipe'});let error='';child.stderr.on('data',b=>error+=b);const codeResult=await new Promise(r=>child.on('exit',r));assert.equal(codeResult,0,error);
+});

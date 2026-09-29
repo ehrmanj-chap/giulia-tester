@@ -40,7 +40,7 @@ standalone default is migrated to the integrated route on backend hosts.
 
 The existing hosted Qwen environment variables are reused: `DASHSCOPE_API_KEY`,
 `QWEN_BASE_URL`, and `QWEN_MODEL`. Mei continues to honor `MEI_LAB_TOKEN`,
-`MEI_ALLOWED_ORIGIN`, and `MEI_DEV_DIAGNOSTICS` independently. No credentials
+`MEI_ALLOWED_ORIGIN`, and `MEI_DEV_DIAGNOSTICS` independently. When Mei-specific token/origin settings are absent, the integrated service inherits Giulia’s configured token/origin. No credentials
 are shipped in browser assets or committed in this change.
 
 For GitHub Pages, configure the actual hosted Giulia base URL in Internal lab
@@ -100,7 +100,7 @@ retrieval across all 77 topics, paraphrase retrieval, and the 400-case invariant
 
 ## Validation performed for this change
 
-47 automated tests passed locally. A real headless Chromium check exercised
+48 automated tests passed locally, including inherited token protection. A real headless Chromium check exercised
 the selection screen, both original portraits, separate conversation histories,
 switching experts, a Mei request with a local provider fixture, the mock-provider
 evaluation guard, and a 390px mobile viewport. No page JavaScript errors or
