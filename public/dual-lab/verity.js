@@ -1,5 +1,6 @@
 import { loadConnections, endpointUrl } from './backend-defaults.js';
 import { buildVerityCases, VERITY_META } from './verity-cases.js';
+import { assessRetrieval, giuliaPreflightError, ragLabel } from './verity-retrieval.js';
 
 const $ = s => document.querySelector(s);
 const run = $('#runVerity'), stop = $('#stopVerity'), download = $('#downloadVerity'), clear = $('#clearVerity');
@@ -27,36 +28,35 @@ async function status(agent) {
   const d=await r.json();
   if(!r.ok||d.ok===false) throw new Error(d.error||`HTTP ${r.status}`);
   if(agent==='mei'&&(d.corpusVersion!==VERITY_META.requiredMeiCorpus||d.knowledge?.cultural?.documents!==74||d.knowledge?.business?.documents!==80))throw new Error('Mei is still on an old or incomplete corpus. Expected 74 cultural + 80 business documents; deploy the updated backend before testing.');
+  if(agent==='giulia'){const error=giuliaPreflightError(d);if(error)throw new Error(error);}
   if(d.provider==='mock')throw new Error(`${agent} is using a mock provider; live evaluation is blocked.`);
   return d;
 }
 const sleep = ms => new Promise(r=>setTimeout(r,ms));
-function retrieval(diag) { return (diag?.calls||[]).flatMap(c=>(c.retrieval||[]).map(x=>({role:c.role||null,id:x.id||null,sourceUrl:x.sourceUrl||null,file:x.file||x.title||null,title:x.title||null,chunk:x.chunk??null,score:x.score??null}))); }
 function metrics(text='') { const words=(text.match(/[\p{L}\p{N}'’-]+/gu)||[]), sentences=(text.match(/[^.!?]+[.!?]+/g)||[]); return {chars:text.length,words:words.length,sentences:sentences.length,paragraphs:text.trim()?text.trim().split(/\n\s*\n/).length:0,bullets:(text.match(/^\s*[-*•]\s+/gm)||[]).length,avgSentenceWords:sentences.length?Number((words.length/sentences.length).toFixed(1)):null,exclamations:(text.match(/!/g)||[]).length,questions:(text.match(/\?/g)||[]).length}; }
-function sourcePass(expected, rows) { if(!expected?.length) return null; const hay=rows.map(x=>`${x.file||''} ${x.title||''}`.toLowerCase()).join(' '); return expected.some(s=>hay.includes(String(s).toLowerCase())); }
 async function execute(test) {
   const t0=Date.now(); let last='',attempts=0;
   for(let attempt=1;attempt<=3;attempt++) { attempts=attempt;
     try {
       const r=await request(test.agent,'/api/chat',{method:'POST',body:JSON.stringify({messages:[{role:'user',content:test.question}]})});
       const d=await r.json().catch(()=>({}));
-      if(!r.ok) { last=d.error||`HTTP ${r.status}`; if(RETRYABLE.has(r.status)&&attempt<3){await sleep(800*attempt);continue;} return {...test,attempts:attempt,elapsedMs:Date.now()-t0,actualRoute:null,routePass:false,reply:'',retrieval:[],retrievalPresent:false,sourceHintPass:null,prosody:metrics(''),error:last}; }
-      const rows=retrieval(d.diagnostics), reply=String(d.reply||'');if(!reply.trim())throw new Error('Empty reply');
-      return {...test,attempts:attempt,elapsedMs:Date.now()-t0,actualRoute:d.route??null,routePass:(test.acceptableRoutes||[test.expectedRoute]).includes(d.route),runId:d.runId??null,model:d.model??null,reply,diagnostics:d.diagnostics??null,retrieval:rows,retrievalPresent:rows.length>0,sourceHintPass:sourcePass(test.expectedSources,rows),prosody:metrics(reply),error:null};
+      if(!r.ok) { last=d.error||`HTTP ${r.status}`; if(RETRYABLE.has(r.status)&&attempt<3){await sleep(800*attempt);continue;} return {...test,attempts:attempt,elapsedMs:Date.now()-t0,actualRoute:null,routePass:false,reply:'',retrieval:[],retrievalObserved:false,retrievalPresent:null,sourceHintPass:null,prosody:metrics(''),error:last}; }
+      const assessment=assessRetrieval(d.diagnostics,d.route,test.expectedSources), reply=String(d.reply||'');if(!reply.trim())throw new Error('Empty reply');
+      return {...test,attempts:attempt,elapsedMs:Date.now()-t0,actualRoute:d.route??null,routePass:(test.acceptableRoutes||[test.expectedRoute]).includes(d.route),runId:d.runId??null,model:d.model??null,reply,diagnostics:d.diagnostics??null,...assessment,prosody:metrics(reply),error:null};
     } catch(e) { last=e.message; if(attempt<3){await sleep(800*attempt);continue;} }
   }
-  return {...test,attempts,elapsedMs:Date.now()-t0,actualRoute:null,routePass:false,runId:null,model:null,reply:'',diagnostics:null,retrieval:[],retrievalPresent:false,sourceHintPass:null,prosody:metrics(''),error:last||'Unknown error'};
+  return {...test,attempts,elapsedMs:Date.now()-t0,actualRoute:null,routePass:false,runId:null,model:null,reply:'',diagnostics:null,retrieval:[],retrievalObserved:false,retrievalPresent:null,sourceHintPass:null,prosody:metrics(''),error:last||'Unknown error'};
 }
 function summarize(results=state.results) {
   const byAgent={};
-  for(const agent of ['giulia','mei']) { const a=results.filter(x=>x.agent===agent), ok=a.filter(x=>!x.error), rc=a.filter(x=>x.expectedRoute); byAgent[agent]={attempted:a.length,successful:ok.length,errors:a.filter(x=>x.error).length,routePasses:rc.filter(x=>x.routePass).length,routeChecks:rc.length,retrievalPresent:ok.filter(x=>x.retrievalPresent).length,avgLatencyMs:ok.length?Math.round(ok.reduce((n,x)=>n+x.elapsedMs,0)/ok.length):null}; }
+  for(const agent of ['giulia','mei']) { const a=results.filter(x=>x.agent===agent), ok=a.filter(x=>!x.error), rc=a.filter(x=>x.expectedRoute), rag=ok.filter(x=>x.actualRoute!=='out_of_scope').map(x=>assessRetrieval(x.diagnostics,x.actualRoute)); byAgent[agent]={attempted:a.length,successful:ok.length,errors:a.filter(x=>x.error).length,routePasses:rc.filter(x=>x.routePass).length,routeChecks:rc.length,retrievalPresent:rag.filter(x=>x.retrievalPresent).length,retrievalChecks:rag.filter(x=>x.retrievalObserved).length,retrievalUnknown:rag.filter(x=>!x.retrievalObserved).length,avgLatencyMs:ok.length?Math.round(ok.reduce((n,x)=>n+x.elapsedMs,0)/ok.length):null}; }
   return {completed:results.length,errors:results.filter(x=>x.error).length,byAgent};
 }
 function render() {
   const s=summarize(), queued=state.queues.giulia.length+state.queues.mei.length; progress.value=state.results.length;
   summary.textContent=state.running?`${state.results.length}/${VERITY_META.total} finished · ${queued} queued${state.stop?' · stopping':''}`:state.results.length?`${state.results.length}/${VERITY_META.total} recorded · ${s.errors} errors`:`Ready: ${VERITY_META.total} isolated cases · ${VERITY_META.perAgent} Giulia · ${VERITY_META.perAgent} Mei`;
-  agentsEl.innerHTML=['giulia','mei'].map(a=>{const x=s.byAgent[a];return `<div><strong>${a==='giulia'?'🇮🇹 Giulia':'🇯🇵 Mei'}</strong><span>${x.attempted}/${VERITY_META.perAgent} · routes ${x.routePasses}/${x.routeChecks||0} · retrieval ${x.retrievalPresent}/${x.successful||0} · errors ${x.errors}</span></div>`}).join('');
-  recentEl.innerHTML=state.results.slice(-10).reverse().map(x=>`<div class="verity-row"><code>${x.id}</code><span>${x.error?'error':x.actualRoute||'no route'} · ${x.elapsedMs} ms · RAG ${x.retrieval.length}</span></div>`).join('')||'<div class="muted">No verity results yet.</div>';
+  agentsEl.innerHTML=['giulia','mei'].map(a=>{const x=s.byAgent[a];return `<div><strong>${a==='giulia'?'🇮🇹 Giulia':'🇯🇵 Mei'}</strong><span>${x.attempted}/${VERITY_META.perAgent} · routes ${x.routePasses}/${x.routeChecks||0} · retrieval ${x.retrievalPresent}/${x.retrievalChecks||0} measured · unknown ${x.retrievalUnknown} · errors ${x.errors}</span></div>`}).join('');
+  recentEl.innerHTML=state.results.slice(-10).reverse().map(x=>`<div class="verity-row"><code>${x.id}</code><span>${x.error?'error':x.actualRoute||'no route'} · ${x.elapsedMs} ms · ${ragLabel(x)}</span></div>`).join('')||'<div class="muted">No verity results yet.</div>';
   if(storageWarning)summary.textContent+=` · ${storageWarning}`;
   download.disabled=!state.results.length; clear.disabled=state.running;
 }
@@ -70,5 +70,5 @@ clear.addEventListener('click',()=>{if(state.running)return;storageWarning='';tr
 render();
 
 function checkpoint(){try{localStorage.setItem(RESULT_KEY,JSON.stringify(report()));}catch{storageWarning='Browser storage full: download the partial report.';}}
-try{const saved=JSON.parse(localStorage.getItem(RESULT_KEY)||'null');if(saved?.suite?.version===VERITY_META.version&&Array.isArray(saved.results)&&saved.results.length){state={...state,...saved,running:false,stop:saved.results.length<VERITY_META.total,queues:{giulia:[],mei:[]}};render();}}catch{}
+try{const saved=JSON.parse(localStorage.getItem(RESULT_KEY)||'null');if(saved?.suite?.version===VERITY_META.version&&Array.isArray(saved.results)&&saved.results.length){state={...state,...saved,results:saved.results.map(x=>({...x,...assessRetrieval(x.diagnostics,x.actualRoute,x.expectedSources)})),running:false,stop:saved.results.length<VERITY_META.total,queues:{giulia:[],mei:[]}};render();}}catch{}
 window.addEventListener('beforeunload',event=>{if(state.running){event.preventDefault();event.returnValue='';}});
