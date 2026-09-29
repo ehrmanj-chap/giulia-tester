@@ -1,4 +1,4 @@
-import { DEFAULT_BACKENDS } from './backend-defaults.js';
+import { DEFAULT_BACKENDS, defaultBackendFor } from './backend-defaults.js';
 import { buildVerityCases, VERITY_META } from './verity-cases.js';
 
 const $ = s => document.querySelector(s);
@@ -16,13 +16,24 @@ function connections() {
   let saved = {};
   try { saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch {}
   return {
-    giulia: { base: String(saved.giulia?.base ?? localStorage.getItem('giuliaApiBase') ?? DEFAULT_BACKENDS.giulia ?? '').trim().replace(/\/$/,''), token: saved.giulia?.token ?? localStorage.getItem('giuliaLabToken') ?? '' },
-    mei: { base: String(saved.mei?.base ?? DEFAULT_BACKENDS.mei ?? '').trim().replace(/\/$/,''), token: saved.mei?.token ?? '' }
+    giulia: { base: String(saved.giulia?.base || localStorage.getItem('giuliaApiBase') || defaultBackendFor('giulia')).trim().replace(/\/$/,''), token: saved.giulia?.token ?? localStorage.getItem('giuliaLabToken') ?? '' },
+    mei: { base: String(saved.mei?.base || defaultBackendFor('mei')).trim().replace(/\/$/,''), token: saved.mei?.token ?? '' }
   };
 }
 function headers(agent, json=false) { const h={}; if(json) h['Content-Type']='application/json'; const t=connections()[agent].token; if(t) h['X-Giulia-Lab-Token']=t; return h; }
 async function request(agent,path,opts={}) { const base=connections()[agent].base; if(!base) throw new Error(`${agent} backend not configured`); return fetch(`${base}${path}`,{...opts,headers:{...headers(agent,Boolean(opts.body)),...(opts.headers||{})}}); }
-async function status(agent) { const r=await request(agent,'/api/status'); const d=await r.json().catch(()=>({})); if(!r.ok) throw new Error(d.error||`HTTP ${r.status}`); return d; }
+async function status(agent) {
+  const r=await request(agent,'/api/status');
+  const contentType=r.headers.get('content-type')||'';
+  if(!contentType.includes('application/json')){
+    const text=await r.text();
+    if(/vercel|log in to vercel|deployment protection/i.test(text)) throw new Error(`${agent} backend is behind Vercel Deployment Protection`);
+    throw new Error(`${agent} backend returned non-JSON (HTTP ${r.status})`);
+  }
+  const d=await r.json();
+  if(!r.ok) throw new Error(d.error||`HTTP ${r.status}`);
+  return d;
+}
 const sleep = ms => new Promise(r=>setTimeout(r,ms));
 function retrieval(diag) { return (diag?.calls||[]).flatMap(c=>(c.retrieval||[]).map(x=>({role:c.role||null,file:x.file||x.title||null,title:x.title||null,chunk:x.chunk??null,score:x.score??null}))); }
 function metrics(text='') { const words=(text.match(/[\p{L}\p{N}'’-]+/gu)||[]), sentences=(text.match(/[^.!?]+[.!?]+/g)||[]); return {chars:text.length,words:words.length,sentences:sentences.length,paragraphs:text.trim()?text.trim().split(/\n\s*\n/).length:0,bullets:(text.match(/^\s*[-*•]\s+/gm)||[]).length,avgSentenceWords:sentences.length?Number((words.length/sentences.length).toFixed(1)):null,exclamations:(text.match(/!/g)||[]).length,questions:(text.match(/\?/g)||[]).length}; }
