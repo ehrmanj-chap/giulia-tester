@@ -1,3 +1,4 @@
+import { MEI_TOPICS } from './mei-topics.js';
 const V = [
   s => `Explain ${s} in practical terms for a newcomer.`,
   s => `Give a concise factual account of ${s}, including the nuance people often miss.`,
@@ -37,33 +38,39 @@ const G = [
   ['out_of_scope','writing a Python script that scrapes restaurant reviews',[]]
 ];
 
-const M = [
-  ['cultural','the five-category keigo framework: sonkeigo, kenjōgo I, kenjōgo II or teichōgo, teineigo, and bikago',['workplace-japanese-keigo.md']],
-  ['cultural','why contemporary keigo is relationship- and context-sensitive rather than a simple status ladder',['workplace-japanese-keigo.md']],
-  ['cultural','common keigo overcorrection errors such as misusing humble forms or stacking honorifics',['workplace-japanese-keigo.md']],
-  ['cultural','why highly polite Japanese wording can still communicate a firm refusal or constraint',['workplace-japanese-keigo.md']],
-  ['cultural','layered participation in Shinto and Buddhism without assuming exclusive religious affiliation',['shinto-buddhism-spirituality.md']],
-  ['cultural','the coexistence of shrine observance and Buddhist funeral customs in Japanese life',['shinto-buddhism-spirituality.md']],
-  ['cultural','common Shinto shrine etiquette, including purification and the two-bows two-claps sequence',['shinto-buddhism-spirituality.md']],
-  ['cultural','common Buddhist temple etiquette and why the Shinto clapping sequence should not be generalized to temples',['shinto-buddhism-spirituality.md']],
-  ['cultural','why posted local rules at Japanese shrines and temples take precedence over generalized etiquette',['shinto-buddhism-spirituality.md']],
-  ['cultural','the false premise that Japanese people must be exclusively Shinto or Buddhist',['shinto-buddhism-spirituality.md']],
-  ['business','the continuing role of physical meishi in Japanese professional settings',['meishi-exchange.md']],
-  ['business','respectful handling of a received meishi during a formal first meeting',['meishi-exchange.md']],
-  ['business','why a dedicated cardholder is a safer default for meishi than a pocket or casual handling',['meishi-exchange.md']],
-  ['business','the common Japanese meishi size of about 91 mm by 55 mm and why it is a printing detail rather than an etiquette law',['meishi-exchange.md']],
-  ['business','how digital contact sharing supplements rather than universally replaces paper meishi',['meishi-exchange.md']],
-  ['business','nemawashi as advance consultation and a no-surprises process before formal decisions',['nemawashi-ringi.md']],
-  ['business','jizen-jumbi, jizen-tsūchi, and jizen-rikai in advance organizational preparation',['nemawashi-ringi.md']],
-  ['business','ringi and the circulation or approval process around a ringisho proposal',['nemawashi-ringi.md']],
-  ['business','the trade-off between slower pre-decision alignment and smoother implementation in nemawashi and ringi',['nemawashi-ringi.md']],
-  ['business','why nemawashi and ringi should not be presented as universal across Japanese firms',['nemawashi-ringi.md']],
-  ['both','how polite Japanese language can affect negotiation without implying that politeness means agreement',['workplace-japanese-keigo.md']],
-  ['both','how meishi etiquette carrries cultural meaning and practical business consequences in a first meeting',['meishi-exchange.md']],
-  ['both','how nemawashi connects Japanese communication norms with the sequencing of a business decision',['nemawashi-ringi.md']],
-  ['out_of_scope','the weather forecast in Seoul tomorrow',[]],
-  ['out_of_scope','writing a Python script that scrapes restaurant reviews',[]]
+const MEI_EDGE_CASES = [
+ ['both','How can polite Japanese language affect a negotiation without implying agreement?'],
+ ['both','What does meishi exchange communicate culturally during a business meeting?'],
+ ['both','How do nemawashi and indirect communication change the sequence of a business decision?'],
+ ['both','How can I decline workplace nomikai without damaging relationships?'],
+ ['both','How should a foreign intern handle keigo when disagreeing with a manager?'],
+ ['both','How can regional communication differences affect a business meeting in Osaka?'],
+ ['both','How do gift-giving customs apply to a professional client relationship?'],
+ ['both','How do hierarchy and social expectations affect Japanese workplace decisions?'],
+ ['both','What should a manager understand about LGBTQ inclusion and daily social interactions at work?'],
+ ['business','What work-permission conditions should a student verify before accepting a part-time job in Japan?'],
+ ['business','Is nemawashi mandatory in every Japanese company? Explain the limits of that premise.'],
+ ['business','Do digital contact tools universally replace paper meishi at formal business meetings?'],
+ ['business','How would you verify current yen exchange rates before making a business budget?'],
+ ['business','Can you guarantee that my proposed internship meets Japanese visa requirements?'],
+ ['cultural','Must Japanese people identify exclusively as either Shinto or Buddhist?'],
+ ['cultural','Do shrine clapping customs also apply at Buddhist temples?'],
+ ['cultural','Are all Japanese people indirect? Explain without stereotyping individuals.'],
+ ['cultural','Can I assume every Japanese person speaks the same regional dialect?'],
+ ['cultural','What information is missing before recommending accessible transportation for a wheelchair user?'],
+ ['cultural','What should a newcomer do if posted shrine rules differ from general etiquette advice?'],
+ ['out_of_scope','Write a Python script to scrape restaurant reviews.'],
+ ['out_of_scope','Give me the weather forecast in Seoul tomorrow.'],
+ ['out_of_scope','Debug my JavaScript code.']
 ];
+function meiCases(){
+ const topicCases=MEI_TOPICS.flatMap((topic,i)=>[
+   `Explain ${topic.topic} in Japan${topic.domain==='business'?' in a business or professional context':' in everyday life'}, using the research available to you. Include practical limits and avoid stereotypes.`,
+   `For someone new to Japan, what are the most important details about ${topic.topic}${topic.domain==='business'?' in a business or professional context':' in everyday life'}? Flag information that needs current verification.`
+ ].map((question,j)=>({id:`mei-topic-${String(i+1).padStart(2,'0')}-${j+1}`,agent:'mei',question,expectedRoute:topic.domain,acceptableRoutes:[topic.domain,'both'],expectedSources:topic.sourceIds,tags:['verity-v2','rag',topic.domain,`topic-${i+1}`],reviewLens:['factuality','grounding','retrieval','persona','prosody']})));
+ const edges=MEI_EDGE_CASES.flatMap(([route,question],i)=>[question,`${question} Please explain your reasoning briefly and be candid about uncertainty.`].map((question,j)=>({id:`mei-edge-${String(i+1).padStart(2,'0')}-${j+1}`,agent:'mei',question,expectedRoute:route,expectedSources:[],tags:['verity-v2','boundary',route],reviewLens:['factuality','grounding','retrieval','persona','prosody']})));
+ return [...topicCases,...edges];
+}
 
 function expand(agent, rows) {
   return rows.flatMap(([route, subject, expectedSources], topic) => V.map((render, variant) => ({
@@ -78,13 +85,13 @@ function expand(agent, rows) {
 }
 
 export function buildVerityCases() {
-  const cases = [...expand('giulia', G), ...expand('mei', M)];
+  const cases = [...expand('giulia', G), ...meiCases()];
   const ids = new Set(cases.map(x => x.id));
   if (cases.length !== 400 || ids.size !== 400) throw new Error(`Verity invariant failed: ${cases.length}/${ids.size}`);
   return cases;
 }
 
 export const VERITY_META = Object.freeze({
-  version: 'dual-verity-v1', total: 400, perAgent: 200,
-  description: '400 isolated RAG and voice probes: 200 Giulia, 200 Mei.'
+  version: 'dual-verity-v2', requiredMeiCorpus: 'mei-drive-2026-09-29', total: 400, perAgent: 200,
+  description: '400 isolated RAG and voice probes: 200 Giulia, 200 Mei across 77 research topics plus boundary cases.'
 });
