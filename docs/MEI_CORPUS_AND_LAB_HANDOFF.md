@@ -106,3 +106,22 @@ switching experts, a Mei request with a local provider fixture, the mock-provide
 evaluation guard, and a 390px mobile viewport. No page JavaScript errors or
 horizontal mobile overflow were detected. This is implementation verification,
 not a completed live Qwen evaluation.
+
+## Giulia production asset incident (2026-09-29)
+
+The partial live report exported at 19:48 UTC showed Giulia had zero documents
+and zero-length core/router/cultural/business/synthesis prompts. Diagnostics
+were enabled. All 22 Giulia cases returned corpus-unavailable messages after
+router-only calls; the old runner counted these HTTP-200 messages as successes.
+Mei loaded all 154 documents and reported retrieval in all 24 completed cases.
+This run does not establish Giulia answer quality or factual accuracy.
+
+The Giulia asset loader now uses literal, module-relative file reads for the five
+prompts and two approved corpus containers so deployment dependency tracing can
+include them. Custom local directories still work. Status includes readiness and
+prompt character counts; missing assets prevent model calls and successful
+readiness. The earlier evaluator preflight also requires both indexed corpora.
+56 local tests pass, including a relocated deployment and no-provider-call checks
+for missing knowledge or prompts. Live verification must show `ok: true`,
+`knowledge.ready: true`, 25 cultural and 25 business documents, nonzero chunks,
+and nonempty metadata for all five prompts at `/api/status` before another run.

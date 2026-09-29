@@ -55,7 +55,8 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname.startsWith('/api/') && !authorized(req)) return sendJson(req, res, 401, { error: 'Invalid or missing Giulia lab token.' });
     if (req.method === 'GET' && url.pathname === '/api/status') {
       const models = activeModels();
-      return sendJson(req, res, 200, { ok: true, provider: provider.name, model: models.model, routerModel: models.routerModel, diagnostics: config.devDiagnostics, knowledge: giulia.status() });
+      const knowledge = giulia.status();
+      return sendJson(req, res, knowledge.ready ? 200 : 503, { ok: knowledge.ready, ...(knowledge.ready ? {} : { error: 'Giulia deployment is missing required knowledge or prompt files.' }), provider: provider.name, model: models.model, routerModel: models.routerModel, diagnostics: config.devDiagnostics, knowledge });
     }
     if (req.method === 'POST' && url.pathname === '/api/chat') {
       const body = JSON.parse(await readBody(req) || '{}');
@@ -74,7 +75,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === 'GET') return serveStatic(req, res);
     res.writeHead(405); res.end('Method not allowed');
-  } catch (error) { console.error(error); sendJson(req, res, 500, { error: error.message || 'Internal error' }); }
+  } catch (error) { console.error(error); sendJson(req, res, error.statusCode === 503 ? 503 : 500, { error: error.message || 'Internal error' }); }
 });
 
 server.listen(config.port, config.host, () => {
