@@ -1,0 +1,8 @@
+export const PRESETS = [
+  { name: 'Timing & pauses', language: 'en-us', text: 'Wait—before we begin, one small detail. The meeting is at 9:15, not 9:50. Shall we take a breath, check the address, and try that again?' },
+  { name: 'Italian ↔ English', language: 'en-us', text: 'We usually start with [[it]]Buongiorno, piacere di conoscerla.[[/it]] Then we discuss the agenda. [[it]]Possiamo darci del tu?[[/it]] means: may we use the informal form of address?' },
+  { name: 'Japanese ↔ English', language: 'en-us', text: 'At the first meeting, say [[ja]]はじめまして。よろしくお願いします。[[/ja]] Give the other person a moment. [[ja]]ありがとうございます。[[/ja]] A little patience makes the exchange feel natural.' },
+  { name: 'Italian pronunciation', language: 'it', text: 'Giulia, scegli gli gnocchi oppure le tagliatelle? Vorrei un caffè, per favore. Ci vediamo giovedì alle quindici e trenta, vicino alla stazione.' },
+  { name: 'Japanese pronunciation', language: 'ja', text: 'こんにちは、メイです。東京と京都では、話し方にも少し違いがあります。会議は木曜日の午後三時半からです。よろしくお願いします。' },
+  { name: 'Identity drift · longer', language: 'en-us', text: 'Let’s begin with a small observation. A greeting can tell you something about the situation, but it cannot tell you everything about a person. I would first pay attention to how the host introduces people. Then I would follow their lead, while leaving room for questions. There are differences between organizations, generations, and regions. Those differences matter. If you are unsure, a courteous question is usually more useful than a confident assumption. Now, returning to the beginning: how would you greet someone you have never met?' }
+];
