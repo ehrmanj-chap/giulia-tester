@@ -36,6 +36,17 @@ test('routes a cultural question and calls only Cultural Giulia internally', asy
   assert.ok(result.trace.calls[1].retrieval.length > 0);
 });
 
+test('route progress callback reports the chosen lane before the final result', async () => {
+  const { giulia } = makeGiulia();
+  let routed = null;
+  const result = await giulia.chat(
+    [{ role: 'user', content: 'What should I know about Italian corporate tax compliance?' }],
+    { onRoute: route => { routed = route; } }
+  );
+  assert.equal(routed, 'business');
+  assert.equal(result.route, 'business');
+});
+
 test('business route retrieves evidence and calls Business Giulia', async () => {
   const { giulia } = makeGiulia();
   const result = await giulia.chat([{ role: 'user', content: 'What should I know about Italian corporate tax compliance?' }]);

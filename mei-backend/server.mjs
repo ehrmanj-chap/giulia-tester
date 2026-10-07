@@ -119,11 +119,12 @@ async function runSpecialist(domain, messages, calls) {
   return result.content;
 }
 
-export async function chat(rawMessages) {
+export async function chat(rawMessages, { onRoute } = {}) {
   const messages = sanitizeMessages(rawMessages);
   if (!messages.length || messages.at(-1).role !== 'user') throw new Error('A conversation ending with a user message is required.');
 
   const route = routeFor(messages);
+  try { if (typeof onRoute === 'function') onRoute(route); } catch {}
   const runId = randomUUID();
   const calls = [];
 
@@ -181,6 +182,14 @@ function sendJson(req, res, status, payload) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...corsHeaders(req) });
   res.end(JSON.stringify(payload));
 }
+function wantsProgress(req) { return String(req.headers?.accept || '').includes('application/x-ndjson'); }
+function startProgress(req, res) { res.writeHead(200, { 'Content-Type': 'application/x-ndjson; charset=utf-8', 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no', ...corsHeaders(req) }); }
+function writeProgress(res, event) { if (res.writableEnded || res.destroyed) return; try { res.write(`${JSON.stringify(event)}\n`); } catch {} }
+function chatPayload(result) {
+  const payload = { reply: result.reply, route: result.route, model: config.qwen.model, runId: result.runId };
+  if (config.diagnostics) payload.diagnostics = { agent: 'mei', calls: result.calls };
+  return payload;
+}
 
 async function readBody(req, maxBytes = 1_500_000) {
   const chunks = [];
@@ -229,15 +238,19 @@ export default async function handler(req, res) {
 
     if (req.method === 'POST' && url.pathname === '/api/chat') {
       const body = req.body && typeof req.body === 'object' && !Buffer.isBuffer(req.body) ? req.body : JSON.parse(typeof req.body === 'string' ? req.body : await readBody(req) || '{}');
+      if (wantsProgress(req)) {
+        startProgress(req, res);
+        try {
+          const result = await chat(body.messages, { onRoute: route => writeProgress(res, { type: 'route', route }) });
+          writeProgress(res, { type: 'result', ...chatPayload(result) });
+        } catch (error) {
+          writeProgress(res, { type: 'error', error: error?.message || 'Internal error.' });
+        }
+        if (!res.writableEnded && !res.destroyed) res.end();
+        return;
+      }
       const result = await chat(body.messages);
-      const payload = {
-        reply: result.reply,
-        route: result.route,
-        model: config.qwen.model,
-        runId: result.runId
-      };
-      if (config.diagnostics) payload.diagnostics = { agent: 'mei', calls: result.calls };
-      return sendJson(req, res, 200, payload);
+      return sendJson(req, res, 200, chatPayload(result));
     }
 
     if (req.method === 'GET' && url.pathname === '/') {

@@ -29,6 +29,15 @@ function corsHeaders(req) {
 }
 function cleanHeaders(headers) { return Object.fromEntries(Object.entries(headers).filter(([, value]) => value != null)); }
 function sendJson(req, res, status, payload) { res.writeHead(status, cleanHeaders({ 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...corsHeaders(req) })); res.end(JSON.stringify(payload)); }
+function wantsProgress(req) { return String(req.headers.accept || '').includes('application/x-ndjson'); }
+function startProgress(req, res) { res.writeHead(200, cleanHeaders({ 'Content-Type': 'application/x-ndjson; charset=utf-8', 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no', ...corsHeaders(req) })); }
+function writeProgress(res, event) { if (res.writableEnded || res.destroyed) return; try { res.write(`${JSON.stringify(event)}\n`); } catch {} }
+function chatPayload(result) {
+  const models = activeModels();
+  const payload = { reply: result.reply, route: result.route, model: models.model, runId: result.trace.runId };
+  if (config.devDiagnostics) payload.diagnostics = { route: result.trace.route, calls: result.trace.calls.map(call => ({ role: call.role, model: call.model, latencyMs: call.latencyMs, usage: call.usage, retrieval: call.retrieval || null })), promptMeta: result.trace.promptMeta, knowledgeMeta: result.trace.knowledgeMeta };
+  return payload;
+}
 function authorized(req) { return !config.labToken || req.headers['x-giulia-lab-token'] === config.labToken; }
 async function readBody(req, maxBytes = 2_000_000) { const chunks = []; let size = 0; for await (const chunk of req) { size += chunk.length; if (size > maxBytes) throw new Error('Request body too large.'); chunks.push(chunk); } return Buffer.concat(chunks).toString('utf8'); }
 function activeModels() { return config.provider === 'ollama' ? { model: config.ollama.model, routerModel: config.ollama.routerModel } : { model: config.qwen.model, routerModel: config.qwen.routerModel }; }
@@ -60,11 +69,19 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === 'POST' && url.pathname === '/api/chat') {
       const body = JSON.parse(await readBody(req) || '{}');
+      if (wantsProgress(req)) {
+        startProgress(req, res);
+        try {
+          const result = await giulia.chat(body.messages, { onRoute: route => writeProgress(res, { type: 'route', route }) });
+          writeProgress(res, { type: 'result', ...chatPayload(result) });
+        } catch (error) {
+          writeProgress(res, { type: 'error', error: error.message || 'Internal error' });
+        }
+        if (!res.writableEnded && !res.destroyed) res.end();
+        return;
+      }
       const result = await giulia.chat(body.messages);
-      const models = activeModels();
-      const payload = { reply: result.reply, route: result.route, model: models.model, runId: result.trace.runId };
-      if (config.devDiagnostics) payload.diagnostics = { route: result.trace.route, calls: result.trace.calls.map(call => ({ role: call.role, model: call.model, latencyMs: call.latencyMs, usage: call.usage, retrieval: call.retrieval || null })), promptMeta: result.trace.promptMeta, knowledgeMeta: result.trace.knowledgeMeta };
-      return sendJson(req, res, 200, payload);
+      return sendJson(req, res, 200, chatPayload(result));
     }
     if (req.method === 'GET' && url.pathname === '/api/runs/latest') {
       const files = fs.existsSync(config.runsDir) ? fs.readdirSync(config.runsDir).filter(name => name.endsWith('.json')).sort().reverse() : [];
