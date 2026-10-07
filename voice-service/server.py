@@ -158,14 +158,11 @@ class SpeechEngine:
             raise ValueError("Unsupported recognition language.")
         if not self.config.get("whisperModel"):
             raise ValueError("Speech recognition is not configured.")
-        # Decode in a bounded subprocess; ffmpeg receives only a generated local file path.
-        # Uploaded bytes cannot supply command-line arguments or a network URL.
-        with tempfile.TemporaryDirectory(prefix="voice-lab-stt-") as temporary:
-            path = Path(temporary) / "input.audio"
-            path.write_bytes(data)
-            result = subprocess.run([self.config.get("ffmpeg", "ffmpeg"), "-nostdin", "-v", "error", "-protocol_whitelist", "file,pipe", "-i", str(path),
-                                     "-t", "61", "-ac", "1", "-ar", "16000", "-f", "f32le", "pipe:1"], capture_output=True, timeout=20, check=True)
-            audio = np.frombuffer(result.stdout, dtype="<f4").copy()
+        # Decode bytes through pipes only: uploaded playlists cannot open a local file
+        # or a network URL, and microphone recordings never touch disk.
+        result = subprocess.run([self.config.get("ffmpeg", "ffmpeg"), "-nostdin", "-v", "error", "-protocol_whitelist", "pipe", "-i", "pipe:0",
+                                 "-t", "61", "-ac", "1", "-ar", "16000", "-f", "f32le", "pipe:1"], input=data, capture_output=True, timeout=20, check=True)
+        audio = np.frombuffer(result.stdout, dtype="<f4").copy()
         if len(audio) > 60 * 16000:
             raise ValueError("Audio must be at most 60 seconds; split longer clips.")
         if len(audio) < 1600 or not np.isfinite(audio).all():
