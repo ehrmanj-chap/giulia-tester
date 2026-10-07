@@ -23,6 +23,11 @@ test('Mei HTTP handler preserves token auth and sends bounded source evidence to
   assert.equal(response.reply,'Offline integration response.');assert.equal(response.route,'cultural');assert.equal(captures.length,1);
   const sys=captures[0].messages[0].content;assert.ok(sys.includes('Opening a Bank Account'));assert.ok(sys.includes('SOURCE:'));assert.ok(sys.length<30000);
   const sources=response.diagnostics.calls[0].retrieval;assert.ok(sources.every(s=>s.id&&s.sourceUrl&&Number.isInteger(s.chunk)));
+  const progress=await fetch(base+'/api/chat',{method:'POST',headers:{...headers,Accept:'application/x-ndjson'},body:JSON.stringify({messages:[{role:'user',content:'What should I know about business meetings in Japan?'}]})});
+  assert.match(progress.headers.get('content-type')||'',/application\/x-ndjson/);
+  const events=(await progress.text()).trim().split('\n').map(line=>JSON.parse(line));
+  assert.equal(events[0].type,'route');assert.equal(events[0].route,'business');
+  assert.equal(events.at(-1).type,'result');assert.equal(events.at(-1).reply,'Offline integration response.');
  }finally{server.closeAllConnections();provider.closeAllConnections();await Promise.all([new Promise(r=>server.close(r)),new Promise(r=>provider.close(r))]);}
 });
 
