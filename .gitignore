@@ -5,3 +5,10 @@ eval-results/*.json
 node_modules/
 .DS_Store
 Thumbs.db
+
+# Voice experiments are local; never publish reference recordings or model weights.
+.voice-local/
+voice-service/*.local.json
+voice-service/.venv/
+voice-service/__pycache__/
+*.pyc
