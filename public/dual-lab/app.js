@@ -1,5 +1,7 @@
 import { defaultBackendFor, loadConnections, saveConnections, endpointUrl } from './backend-defaults.js';
 import { BrowserSpeech, hasBrowserSpeech } from './voice/browser-speech.js';
+import { VoiceGateway } from './voice/clients.js';
+import { AudioPlayer } from './voice/audio.js';
 import { speechSegments } from './voice/core.js';
 const $ = s => document.querySelector(s);
 const AGENTS = {
@@ -8,22 +10,30 @@ const AGENTS = {
 };
 let selectedAgent='giulia', connections=loadConnections();
 const histories={giulia:[],mei:[]}, pending={giulia:false,mei:false}, thinkingRoutes={giulia:null,mei:null}, health={giulia:null,mei:null}, checkIds={giulia:0,mei:0}, runDiagnostics={giulia:null,mei:null}, drafts={giulia:'',mei:''};
-const readout=new BrowserSpeech();let readoutEpoch=0,readoutController=null;
+const readout=new BrowserSpeech(), readoutPlayer=new AudioPlayer();
+let readoutEpoch=0,readoutController=null,readoutGateway=null;
 function stopReadout(){
-  readoutEpoch++;readoutController?.abort();readout.stop();
+  readoutEpoch++;readoutController?.abort();readout.stop();readoutPlayer.stop();
   $('#readoutStatus').textContent='Speech stopped';
 }
 async function playReadout(text, agent){
-  readoutEpoch++;readoutController?.abort();readout.stop();
-  const epoch=readoutEpoch;
-  if(!hasBrowserSpeech()){ $('#readoutStatus').textContent='Speech unavailable in this browser';return; }
+  readoutEpoch++;readoutController?.abort();readout.stop();readoutPlayer.stop();
+  const epoch=readoutEpoch, useGateway=$('#preferGatewayReadout').checked;
+  if(useGateway&&!readoutGateway){$('#readoutStatus').textContent='Connect the experimental TTS gateway first';return;}
+  if(!useGateway&&!hasBrowserSpeech()){ $('#readoutStatus').textContent='Browser speech unavailable. Connect experimental TTS instead.';return; }
   const controller=new AbortController();readoutController=controller;
-  $('#readoutStatus').textContent='Reading '+AGENTS[agent].name+'…';
+  $('#readoutStatus').textContent='Reading '+AGENTS[agent].name+(useGateway?' · experimental voice':' · browser voice')+'…';
   try {
     const language=$('#readoutLanguage').value;
+    const voice=$('#'+agent+'ReadoutVoice').value;
     for(const chunk of speechSegments(text,language)){
       if(controller.signal.aborted)break;
-      await readout.speak({text:chunk.text,language:chunk.language,voice:'browser:default',speech:{pace:1}},{signal:controller.signal});
+      if(useGateway){
+        const clip=await readoutGateway.synthesize({text:chunk.text,language:chunk.language,voice,speech:{pace:1}},{signal:controller.signal});
+        await readoutPlayer.play(clip.blob,{signal:controller.signal});
+      }else{
+        await readout.speak({text:chunk.text,language:chunk.language,voice:'browser:default',speech:{pace:1}},{signal:controller.signal});
+      }
     }
     if(epoch===readoutEpoch)$('#readoutStatus').textContent='Finished reading';
   }catch(failure){
@@ -125,6 +135,38 @@ $('#clearConnection').addEventListener('click',()=>{connections[selectedAgent]={
 $('#checkBackend').addEventListener('click',()=>checkBackend());
 $('#stopReadout').addEventListener('click',stopReadout);
 $('#readoutLanguage').addEventListener('change',stopReadout);
+try { $('#readoutGatewayUrl').value=localStorage.getItem('voiceLab.gateway')||$('#readoutGatewayUrl').value; } catch {}
+$('#preferGatewayReadout').addEventListener('change',()=>{
+  if($('#preferGatewayReadout').checked&&!readoutGateway){
+    $('#preferGatewayReadout').checked=false;
+    $('#readoutGatewayStatus').textContent='Connect a speech gateway before selecting experimental voices.';
+  }
+  stopReadout();
+});
+$('#connectReadoutGateway').addEventListener('click',async()=>{
+  stopReadout();
+  $('#readoutGatewayStatus').textContent='Connecting to experimental speech service…';
+  try{
+    const candidate=new VoiceGateway($('#readoutGatewayUrl').value,$('#readoutGatewayToken').value);
+    const status=await candidate.status();
+    if(status.schemaVersion!==1||!Array.isArray(status.voices)||!status.voices.length)throw Error('No compatible voices provided.');
+    for(const agent of ['giulia','mei']){
+      const selection=$('#'+agent+'ReadoutVoice'),prior=selection.value;
+      selection.replaceChildren();
+      status.voices.forEach(v=>selection.add(new Option(v.label,v.id)));
+      selection.value=status.voices.find(v=>v.id===prior)?.id
+        ||status.voices.find(v=>v.agent===agent&&v.default)?.id
+        ||status.voices.find(v=>v.agent===agent)?.id
+        ||status.voices.find(v=>v.default)?.id||status.voices[0].id;
+    }
+    readoutGateway=candidate;
+    $('#preferGatewayReadout').checked=true;
+    $('#readoutGatewayStatus').textContent='Connected · '+status.voices.length+' experimental voices. Future readouts use this service while selected.';
+  }catch(failure){
+    readoutGateway=null;$('#preferGatewayReadout').checked=false;
+    $('#readoutGatewayStatus').textContent='Could not connect: '+failure.message+' Browser speech remains available.';
+  }
+});
 $('#resetChat').addEventListener('click',()=>{if(pending[selectedAgent])return;stopReadout();histories[selectedAgent]=[];runDiagnostics[selectedAgent]=null;drafts[selectedAgent]='';render();$('#input').focus();});
 $('#input').addEventListener('input',()=>drafts[selectedAgent]=$('#input').value);
 $('#input').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();$('#chatForm').requestSubmit();}});
