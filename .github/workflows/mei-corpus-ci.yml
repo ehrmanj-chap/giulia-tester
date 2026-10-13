@@ -7,6 +7,7 @@ on:
       - 'mei-backend/**'
       - 'tests/**'
       - 'public/dual-lab/**'
+      - 'voice-service/**'
       - 'server.mjs'
       - 'scripts/import-mei-corpus.py'
       - '.github/workflows/mei-corpus-ci.yml'
@@ -25,6 +26,13 @@ jobs:
           node-version: ${{ matrix.node }}
       - name: Offline tests only (no model calls)
         run: npm test
+      - name: Validate browser entrypoints
+        run: |
+          node --check public/dual-lab/app.js
+          node --check public/dual-lab/voice/app.js
+          node --check public/dual-lab/voice/browser-speech.js
+      - name: Validate speech gateway HTTP contract (no models)
+        run: python3 voice-service/test_server.py
       - name: Export tracked source for local import verification
         if: matrix.node == '24'
         run: git archive --format=tar.gz --output=/tmp/mei-base-source.tar.gz HEAD
