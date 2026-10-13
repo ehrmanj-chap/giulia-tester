@@ -1,4 +1,6 @@
 import { defaultBackendFor, loadConnections, saveConnections, endpointUrl } from './backend-defaults.js';
+import { BrowserSpeech, hasBrowserSpeech } from './voice/browser-speech.js';
+import { speechSegments } from './voice/core.js';
 const $ = s => document.querySelector(s);
 const AGENTS = {
   giulia:{name:'Giulia',label:'Giulia (Italy Expert)',country:'ITALY',description:'Italian cultural and business intelligence',welcome:'Ciao! What would you like to explore about life, culture, or business in Italy?'},
@@ -6,6 +8,29 @@ const AGENTS = {
 };
 let selectedAgent='giulia', connections=loadConnections();
 const histories={giulia:[],mei:[]}, pending={giulia:false,mei:false}, thinkingRoutes={giulia:null,mei:null}, health={giulia:null,mei:null}, checkIds={giulia:0,mei:0}, runDiagnostics={giulia:null,mei:null}, drafts={giulia:'',mei:''};
+const readout=new BrowserSpeech();let readoutEpoch=0,readoutController=null;
+function stopReadout(){
+  readoutEpoch++;readoutController?.abort();readout.stop();
+  $('#readoutStatus').textContent='Speech stopped';
+}
+async function playReadout(text, agent){
+  readoutEpoch++;readoutController?.abort();readout.stop();
+  const epoch=readoutEpoch;
+  if(!hasBrowserSpeech()){ $('#readoutStatus').textContent='Speech unavailable in this browser';return; }
+  const controller=new AbortController();readoutController=controller;
+  $('#readoutStatus').textContent='Reading '+AGENTS[agent].name+'…';
+  try {
+    const language=$('#readoutLanguage').value;
+    for(const chunk of speechSegments(text,language)){
+      if(controller.signal.aborted)break;
+      await readout.speak({text:chunk.text,language:chunk.language,voice:'browser:default',speech:{pace:1}},{signal:controller.signal});
+    }
+    if(epoch===readoutEpoch)$('#readoutStatus').textContent='Finished reading';
+  }catch(failure){
+    if(epoch===readoutEpoch)$('#readoutStatus').textContent=failure.name==='AbortError'?'Speech stopped':('Speech failed: '+failure.message);
+  }
+}
+
 function countryName(agent){const country=AGENTS[agent].country;return country.charAt(0)+country.slice(1).toLowerCase();}
 function thinkingLabel(agent,route){
   const country=countryName(agent);
@@ -18,7 +43,16 @@ function thinkingLabel(agent,route){
 function renderMessages(){
   const box=$('#messages');box.replaceChildren();
   if(!histories[selectedAgent].length){const p=document.createElement('p');p.className='system-note';p.textContent=AGENTS[selectedAgent].welcome;box.append(p);}
-  for(const m of histories[selectedAgent]){const el=document.createElement('div');el.className=`msg ${m.role}`;el.textContent=m.content;box.append(el);}
+  for(const m of histories[selectedAgent]){
+    const el=document.createElement('div');el.className=`msg ${m.role}`;
+    const reply=document.createElement('div');reply.className='reply-text';reply.textContent=m.content;el.append(reply);
+    if(m.role==='assistant'&&!m.error){
+      const play=document.createElement('button');play.className='read-reply';play.type='button';play.textContent='🔊 Read aloud';
+      const agent=selectedAgent;play.setAttribute('aria-label','Read '+AGENTS[agent].name+' reply aloud');
+      play.addEventListener('click',()=>playReadout(m.content,agent));el.append(play);
+    }
+    box.append(el);
+  }
   if(pending[selectedAgent]){
     const el=document.createElement('div');el.className='msg assistant thinking-msg';el.setAttribute('role','status');
     const label=document.createElement('span');label.className='thinking-label';label.textContent=thinkingLabel(selectedAgent,thinkingRoutes[selectedAgent]);
@@ -75,12 +109,12 @@ async function checkBackend(agent=selectedAgent){
   if(agent===selectedAgent)renderHealth();
 }
 function selectAgent(agent,openChat=true){
-  drafts[selectedAgent]=$('#input').value;selectedAgent=agent;render();
+  stopReadout();drafts[selectedAgent]=$('#input').value;selectedAgent=agent;render();
   if(openChat){$('#expertSelection').classList.add('hidden');$('#chatPanel').classList.remove('hidden');$('#input').focus();}
   checkBackend(agent);
 }
 for(const card of document.querySelectorAll('[data-agent]'))card.addEventListener('click',()=>selectAgent(card.dataset.agent));
-$('#changeExpert').addEventListener('click',()=>{$('#chatPanel').classList.add('hidden');$('#expertSelection').classList.remove('hidden');$('#selectionHeading').focus();});
+$('#changeExpert').addEventListener('click',()=>{stopReadout();$('#chatPanel').classList.add('hidden');$('#expertSelection').classList.remove('hidden');$('#selectionHeading').focus();});
 $('#agentSelect').addEventListener('change',()=>selectAgent($('#agentSelect').value,false));
 $('#saveConnection').addEventListener('click',()=>{
   const base=$('#backendUrl').value.trim().replace(/\/+$/,'')||defaultBackendFor(selectedAgent);
@@ -89,14 +123,17 @@ $('#saveConnection').addEventListener('click',()=>{
 });
 $('#clearConnection').addEventListener('click',()=>{connections[selectedAgent]={base:defaultBackendFor(selectedAgent),token:''};saveConnections(connections);render();checkBackend();});
 $('#checkBackend').addEventListener('click',()=>checkBackend());
-$('#resetChat').addEventListener('click',()=>{if(pending[selectedAgent])return;histories[selectedAgent]=[];runDiagnostics[selectedAgent]=null;drafts[selectedAgent]='';render();$('#input').focus();});
+$('#stopReadout').addEventListener('click',stopReadout);
+$('#readoutLanguage').addEventListener('change',stopReadout);
+$('#resetChat').addEventListener('click',()=>{if(pending[selectedAgent])return;stopReadout();histories[selectedAgent]=[];runDiagnostics[selectedAgent]=null;drafts[selectedAgent]='';render();$('#input').focus();});
 $('#input').addEventListener('input',()=>drafts[selectedAgent]=$('#input').value);
 $('#input').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();$('#chatForm').requestSubmit();}});
 $('#chatForm').addEventListener('submit',async e=>{
   e.preventDefault();const agent=selectedAgent,text=$('#input').value.trim();if(!text||pending[agent]||health[agent]?.tone!=='ok')return;
-  histories[agent].push({role:'user',content:text});drafts[agent]='';$('#input').value='';thinkingRoutes[agent]=null;pending[agent]=true;renderMessages();renderHealth();
-  try{const d=await requestChat(agent,histories[agent].filter(m=>!m.error),event=>{thinkingRoutes[agent]=event.route;if(selectedAgent===agent)renderMessages();});if(typeof d.reply!=='string'||!d.reply.trim())throw new Error('Backend returned an empty reply.');histories[agent].push({role:'assistant',content:d.reply});runDiagnostics[agent]={agent,runId:d.runId,route:d.route,diagnostics:d.diagnostics};}
+  stopReadout();histories[agent].push({role:'user',content:text});drafts[agent]='';$('#input').value='';thinkingRoutes[agent]=null;pending[agent]=true;renderMessages();renderHealth();
+  let completedReply=null;
+  try{const d=await requestChat(agent,histories[agent].filter(m=>!m.error),event=>{thinkingRoutes[agent]=event.route;if(selectedAgent===agent)renderMessages();});if(typeof d.reply!=='string'||!d.reply.trim())throw new Error('Backend returned an empty reply.');histories[agent].push({role:'assistant',content:d.reply});completedReply=d.reply;runDiagnostics[agent]={agent,runId:d.runId,route:d.route,diagnostics:d.diagnostics};}
   catch(e){histories[agent].push({role:'assistant',content:`The response could not be completed: ${e.message}`,error:true});}
-  finally{pending[agent]=false;thinkingRoutes[agent]=null;if(selectedAgent===agent){render();$('#input').focus();}}
+  finally{pending[agent]=false;thinkingRoutes[agent]=null;if(selectedAgent===agent){render();$('#input').focus();if(completedReply&&$('#autoReadout').checked)void playReadout(completedReply,agent);}}
 });
 render();
