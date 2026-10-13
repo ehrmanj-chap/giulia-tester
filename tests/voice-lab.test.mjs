@@ -76,7 +76,7 @@ test('human may decline a three-way invitation by resuming the AI discussion', a
 });
 test('text and normal backend behavior remain independent from mode selection', () => {
   const app = fs.readFileSync(new URL('../public/dual-lab/app.js', import.meta.url), 'utf8');
-  assert.ok(!app.includes('voice/')); const a = make(), b = make({ options: { mode: 'human-ai' } }); a.newTurn('giulia', 'Hello'); assert.equal(b.turns.length, 0);
+  assert.ok(app.includes('requestChat(')); assert.ok(app.includes('readout=new BrowserSpeech()')); const a = make(), b = make({ options: { mode: 'human-ai' } }); a.newTurn('giulia', 'Hello'); assert.equal(b.turns.length, 0);
   assert.ok(!fs.readFileSync(new URL('../server.mjs', import.meta.url), 'utf8').includes('voice-service'));
 });
 test('bilingual segments retain fixed text order and language annotations only for rendering', () => {
@@ -116,4 +116,26 @@ test('agent adapter uses existing connection settings and exact message payload'
 });
 test('session export excludes audio objects and includes raw/normalized text and errors', async () => {
   const s = make(); const turn = await s.humanAudio(new Blob()); turn.audio = [{ blob: new Blob(), url: 'blob:private' }]; const report = s.report(); assert.equal(report.turns[0].audio, undefined); assert.equal(report.turns[0].rawTranscript, ' Hello,  Giulia. '); assert.ok(!JSON.stringify(report).includes('blob:private'));
+});
+
+test('typed and browser-recognized human turns preserve source labels and agent routing', async () => {
+  const calls = [];
+  const s = make({ options: { mode: 'ai-ai-human' }, model: async (agent, messages) => {
+    calls.push({ agent, messages }); return { reply: 'A useful response.' };
+  } });
+  const human = s.humanText('  Mei,  can you explain?  ', { backend: 'browser-speech-recognition' });
+  assert.equal(human.rawTranscript, '  Mei,  can you explain?  ');
+  assert.equal(human.normalizedTranscript, 'Mei, can you explain?');
+  assert.equal(human.sttBackend, 'browser-speech-recognition');
+  assert.equal(s.state, 'running');
+  await s.advance();
+  assert.equal(calls[0].agent, 'mei');
+  assert.equal(calls[0].messages.at(-1).content, 'Mei, can you explain?');
+});
+test('typed fallback never masquerades as an STT result', () => {
+  const s = make({ options: { mode: 'stt' } });
+  const turn = s.humanText(' Typed without microphone. ', { backend: 'typed-input-not-stt' });
+  assert.equal(turn.sttBackend, 'typed-input-not-stt');
+  assert.equal(s.state, 'idle');
+  assert.throws(() => s.humanText('  '), /nonempty turn/);
 });
