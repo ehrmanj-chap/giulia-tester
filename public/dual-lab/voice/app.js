@@ -1,10 +1,13 @@
 import { AGENTS, VoiceSession, speechSegments, speechSpec } from './core.js';
 import { VoiceGateway, callAgent } from './clients.js';
 import { AudioPlayer, Microphone } from './audio.js';
+import { BrowserSpeech, hasBrowserRecognition } from './browser-speech.js';
 import { PRESETS } from './presets.js';
 const $ = selector => document.querySelector(selector);
 const player = new AudioPlayer();
 let gateway, capabilities, session, loopRunning = false, lastClip, ttsController, uiEpoch = 0, ttsBusy = false;
+const browserSpeech = new BrowserSpeech();
+let browserListening = false, browserListenController = null;
 const objectUrls = new Set();
 const hints = { tts: 'Try a phrase, compare voices, and listen for timing and pronunciation.', stt: 'Record or upload speech. Review the original transcript and recognition time.', 'human-ai': 'Speak to one expert. Their normal text pipeline provides every response.', 'ai-ai': 'Giulia and Mei exchange exact text. Speech is rendered for you to hear.', 'ai-ai-human': 'Join, interrupt, or redirect the discussion. A direct question to you pauses the agents.' };
 try { $('#gatewayUrl').value = localStorage.getItem('voiceLab.gateway') || $('#gatewayUrl').value; } catch {}
@@ -13,7 +16,7 @@ function options() { return { mode: $('#mode').value, agent: $('#agent').value, 
   maxTurns: Number($('#maxTurns').value), topic: $('#topic').value, scenario: $('#scenario').value, objective: $('#objective').value, opening: $('#opening').value }; }
 function makeSession() {
   return new VoiceSession({ options: options(), model: callAgent, renderSpeech, onChange: render,
-    transcribe: (blob, params) => { if (!gateway) throw Error('Connect the voice service first.'); return gateway.transcribe(blob, params); } });
+    transcribe: (blob, params) => { if (!gateway || gateway.kind === 'browser') throw Error('Audio file transcription needs a connected Whisper voice gateway.'); return gateway.transcribe(blob, params); } });
 }
 function setMode() {
   const mode = $('#mode').value;
@@ -22,7 +25,7 @@ function setMode() {
   reset();
 }
 function reset() {
-  uiEpoch++; session?.stop('Session reset'); ttsController?.abort(); player.stop(); mic.stop(true); lastClip = null;
+  uiEpoch++; session?.stop('Session reset'); ttsController?.abort(); player.stop(); browserListenController?.abort(); browserSpeech.abortListening(); browserSpeech.stop(); browserListening = false; mic.stop(true); lastClip = null;
   $('#retry').disabled = true; $('#upload').value = ''; objectUrls.forEach(url => URL.revokeObjectURL(url)); objectUrls.clear();
   session = makeSession(); ttsBusy = false; error(); render();
 }
@@ -52,6 +55,19 @@ function render() {
           if (!clip.url) { clip.url = URL.createObjectURL(clip.blob); objectUrls.add(clip.url); }
           const save = document.createElement('a'); save.href = clip.url; save.download = `${turn.participant}-${turn.id}-${i + 1}.wav`; save.textContent = turn.audio.length === 1 ? 'Save clip' : `Save part ${i + 1}`; actions.append(save);
         }); article.append(actions);
+      } else if (turn.ttsBackend === 'browser') {
+        const actions = document.createElement('div'); actions.className = 'clip-actions';
+        const replay = document.createElement('button'); replay.type = 'button'; replay.className = 'ghost'; replay.textContent = 'Speak again';
+        replay.onclick = async () => {
+          if (session.busy || session.state === 'running') session.pause();
+          haltAudio(); ttsController = new AbortController();
+          try {
+            for (const segment of speechSegments(turn.text, turn.ttsParameters?.language || 'en-us')) {
+              await browserSpeech.speak({ ...segment, voice: turn.voice, speech: turn.ttsParameters }, { signal: ttsController.signal });
+            }
+          } catch (failure) { if (failure.name !== 'AbortError') error(failure.message); }
+        };
+        actions.append(replay); article.append(actions);
       }
       if ($('#showDebug').checked) {
         const detail = document.createElement('details'), summary = document.createElement('summary'), pre = document.createElement('pre'); summary.textContent = 'Turn diagnostics';
@@ -74,6 +90,22 @@ async function renderSpeech(turn, { signal } = {}) {
   turn.voice = voice; turn.voiceLabel = voiceInfo?.label || voice; turn.ttsBackend = voiceInfo?.backend || capabilities.tts.backend;
   turn.ttsParameters = { language, ...speechSpec({ ...turn.speech, pace: Number($('#pace').value) }) };
   turn.audio = []; turn.chunks = []; const segments = speechSegments(turn.text, language); const started = performance.now(); let first = true, generationMs = 0;
+  if (gateway.kind === 'browser') {
+    turn.audioStatus = 'playing'; render();
+    for (const segment of segments) {
+      if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+      await gateway.speak({ ...segment, voice, speech: turn.ttsParameters }, {
+        signal, onPlaying: () => {
+          if (first) { turn.timings.firstAudioMs = performance.now() - started; first = false; render(); }
+        }
+      });
+      turn.chunks.push({ ...segment, backend: 'browser-speech-synthesis' });
+    }
+    turn.timings.ttsMs = null; // Browser API does not expose synthesis latency.
+    turn.timings.audioWallMs = performance.now() - started;
+    turn.audioStatus = 'complete'; render();
+    return;
+  }
   const synthesize = segment => gateway.synthesize({ ...segment, voice, speech: turn.ttsParameters }, { signal });
   // One-chunk lookahead: inference overlaps playback, while preserving playback order.
   // A tagged outcome prevents an unhandled rejection while the prior clip is playing.
@@ -103,7 +135,7 @@ async function runLoop(manual = false) {
     } while (session.state === 'running');
   } finally { loopRunning = false; render(); }
 }
-function haltAudio() { ttsController?.abort(); player.stop(); }
+function haltAudio() { ttsController?.abort(); player.stop(); browserSpeech.stop(); }
 async function acceptClip(blob, params = {}) {
   if (blob.size > 8 * 1024 * 1024) { error('Choose an audio clip under 8 MB and 60 seconds.'); return; }
   lastClip = blob; $('#retry').disabled = false; error();
@@ -116,6 +148,17 @@ async function acceptClip(blob, params = {}) {
       if (activeSession === session) await runLoop();
     }
   } catch (e) { error(e.message); }
+}
+async function acceptRecognizedText(text, backend = 'typed') {
+  const activeSession = session;
+  session.options = { ...session.options, ...options() };
+  try {
+    const turn = session.humanText(text, { backend });
+    if (turn && activeSession === session && session.options.mode !== 'stt') {
+      while (loopRunning && activeSession === session) await new Promise(resolve => setTimeout(resolve, 30));
+      if (activeSession === session) await runLoop();
+    }
+  } catch (failure) { error(failure.message); }
 }
 const mic = new Microphone({ onClip: acceptClip, onError: e => error(e.message),
   onState: state => { $('#micStatus').textContent = `Microphone ${state}`; $('#record').textContent = mic.active ? 'Stop recording' : 'Start recording'; },
