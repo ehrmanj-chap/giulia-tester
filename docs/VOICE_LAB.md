@@ -123,3 +123,22 @@ The Python tests require no models. They verify auth, explicit CORS, byte/audio 
 - `docs/VOICE_LAB.md`: this handoff.
 
 Upstream references: [Kokoro ONNX](https://github.com/thewh1teagle/kokoro-onnx), [Seed-VC](https://github.com/Plachtaa/seed-vc), [Misaki](https://github.com/hexgrad/misaki). Seed-VC's upstream license and model terms remain applicable; its source and weights are not redistributed in this change.
+
+
+## Hosted browser demo and Dual Lab readout (October 13, 2026)
+
+The current Dual Lab has an **Open Audio Lab** link and an optional **Read new replies aloud** toggle. Each assistant message also has a **Read aloud** button. This Dual Lab readout uses the browser's built-in speech synthesis; it does not change the original agent messages or require a speech gateway. The language is selectable. Browser voice choice, accent, prosody, and support vary by operating system and browser.
+
+The Audio Lab at `/dual-lab/voice/` now starts in **Browser speech** mode on both GitHub Pages and a Node/Vercel frontend:
+
+- **Text → Speech:** browser speech synthesis, timing, and replay. Generated browser speech cannot be saved as a WAV clip. Choose **Advanced voice gateway** for generated audio, downloadable clips, and experimental custom identities.
+- **Speech → Text:** microphone recognition in supporting Chrome/Edge-family browsers. Browser recognition may send audio to the browser vendor; it is not Whisper or guaranteed offline. The `auto` language setting uses English in browser mode. Uploading existing recordings requires the Whisper gateway.
+- **Human ↔ AI:** browser-recognized or typed human input passes as canonical text to the selected existing Giulia/Mei model endpoint. AI responses are spoken with browser voices.
+- **AI ↔ AI:** both existing text endpoints exchange their exact responses, with browser playback after each turn. If either agent endpoint is unavailable, the UI reports the real error; no fake transcript is generated.
+- **AI ↔ AI ↔ Human:** browser mic or typed intervention can redirect the agent discussion. Automatic AI turns pause when the orchestrator detects direct human address.
+
+A **Type a human turn** input is available in the speech-recognition modes when microphone permissions or vendor APIs are unavailable. Its transcript is explicitly labeled `typed-input-not-stt`; typing is a conversation-routing fallback, **not an STT validation**.
+
+The browser path gives a hostable, interactive demo but does not replace the advanced voice system. To use Kokoro, Whisper, or Seed-VC with a public HTTPS page, operate a separately hosted, authenticated HTTPS voice gateway. The checked-in reference Python service is deliberately loopback-bound and must not be exposed to the public internet without separate authentication, TLS, origin policy, and abuse controls. Nothing in this change deploys private reference voices or model weights to GitHub Pages or Vercel.
+
+To publish the static interface: merge the feature PR, then trigger the existing GitHub Pages workflow or serve the `public/` assets with the existing Node app. The ordinary chat and autonomous conversation modes still require working Giulia/Mei backends (configure the text lab's Internal lab tools). A browser STT/TTS demo can be tested without the Python gateway, but full end-to-end spoken dialogue requires those text backends and a compatible speech browser.
