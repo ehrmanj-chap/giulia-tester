@@ -86,7 +86,7 @@ test('hosted lab exposes navigation, five modes, readout and typed conversation 
   const dual = fs.readFileSync(new URL('../public/dual-lab/index.html', import.meta.url), 'utf8');
   const voice = fs.readFileSync(new URL('../public/dual-lab/voice/index.html', import.meta.url), 'utf8');
   assert.match(dual, /href="\.\/voice\/"/);
-  for (const id of ['autoReadout', 'stopReadout', 'readoutLanguage']) assert.ok(dual.includes('id="' + id + '"'));
+  for (const id of ['autoReadout', 'stopReadout', 'readoutLanguage', 'readoutGatewayUrl', 'readoutGatewayToken', 'connectReadoutGateway', 'giuliaReadoutVoice', 'meiReadoutVoice', 'preferGatewayReadout']) assert.ok(dual.includes('id="' + id + '"'));
   for (const mode of ['tts', 'stt', 'human-ai', 'ai-ai', 'ai-ai-human']) assert.ok(voice.includes('value="' + mode + '"'));
   for (const id of ['speechEngine', 'sendTyped', 'typedTurn', 'gatewayToken']) assert.ok(voice.includes('id="' + id + '"'));
 });
