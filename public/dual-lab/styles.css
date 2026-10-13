@@ -24,3 +24,12 @@ button:not(.expert-card):not(.text-button){border:1px solid var(--accent);border
 button.read-reply:not(.expert-card):not(.text-button){display:block;margin:.5rem 0 0;padding:.15rem .4rem;color:var(--accent);background:transparent;border:1px solid #d5c6c7;font:11px system-ui,sans-serif}
 button.read-reply:hover{background:#f4e8eb}
 @media(max-width:650px){.lab-nav{justify-content:stretch}.voice-lab-link{width:100%}.readout-bar{padding:.7rem 1rem}.readout-language{width:100%}}
+
+.readout-advanced{flex-basis:100%;border-top:1px solid #eee;padding-top:.4rem}
+.readout-advanced summary{color:var(--accent);font:12px system-ui,sans-serif;cursor:pointer}
+.readout-settings{display:flex;align-items:end;flex-wrap:wrap;gap:.5rem .85rem;margin-top:.75rem}
+.readout-settings label{min-width:170px;max-width:270px;font:12px system-ui,sans-serif}
+.readout-settings input:not([type=checkbox]),.readout-settings select{width:100%;margin:.25rem 0;padding:.4rem;font:12px system-ui,sans-serif}
+.readout-settings #connectReadoutGateway{font:12px system-ui,sans-serif;padding:.4rem .65rem}
+.readout-settings .readout-check{min-width:230px;margin-bottom:.45rem}
+#readoutGatewayStatus{width:100%;color:var(--muted);font:11px/1.5 system-ui,sans-serif;margin:.25rem 0}
