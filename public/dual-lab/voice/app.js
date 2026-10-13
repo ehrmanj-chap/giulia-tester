@@ -172,23 +172,55 @@ async function devices() {
   }
   $('#speaker').disabled = !('setSinkId' in HTMLMediaElement.prototype);
 }
-$('#connect').onclick = async () => {
-  error(); $('#serviceStatus').textContent = 'Connecting…';
+async function connectSpeech() {
+  error(); $('#serviceStatus').textContent = 'Connecting speech engine…';
   try {
-    const candidate = new VoiceGateway($('#gatewayUrl').value, $('#gatewayToken').value);
-    const status = await candidate.status(); if (status.schemaVersion !== 1 || !Array.isArray(status.voices)) throw Error('Unsupported voice gateway contract.');
+    const candidate = $('#speechEngine').value === 'browser'
+      ? browserSpeech : new VoiceGateway($('#gatewayUrl').value, $('#gatewayToken').value);
+    const status = await candidate.status();
+    if (status.schemaVersion !== 1 || !Array.isArray(status.voices)) throw Error('Unsupported speech engine contract.');
     gateway = candidate; capabilities = status;
-    try { localStorage.setItem('voiceLab.gateway', candidate.base); } catch {}
-    for (const agent of ['giulia', 'mei']) {
-      const el = $(`#${agent}Voice`), previous = el.value; el.replaceChildren();
-      status.voices.forEach(v => el.add(new Option(v.label, v.id)));
-      el.value = status.voices.some(v => v.id === previous) ? previous : status.voices.find(v => v.agent === agent && v.default)?.id || status.voices.find(v => v.agent === agent)?.id || status.voices[0]?.id || '';
+    if (candidate.kind !== 'browser') {
+      try { localStorage.setItem('voiceLab.gateway', candidate.base); } catch {}
     }
-    $('#compareVoice').replaceChildren(new Option('No comparison', '')); status.voices.forEach(v => $('#compareVoice').add(new Option(v.label, v.id)));
-    $('#serviceStatus').textContent = `Connected · ${status.voices.length} voices · ${status.stt?.available ? 'speech recognition ready' : 'speech recognition unavailable'}`;
+    for (const agent of ['giulia', 'mei']) {
+      const el = $('#'+agent+'Voice'), previous = el.value;
+      el.replaceChildren();
+      status.voices.forEach(v => el.add(new Option(v.label, v.id)));
+      el.value = status.voices.some(v => v.id === previous) ? previous
+        : status.voices.find(v => v.agent === agent && v.default)?.id
+        || status.voices.find(v => v.agent === agent)?.id
+        || status.voices.find(v => v.default)?.id || status.voices[0]?.id || '';
+    }
+    $('#compareVoice').replaceChildren(new Option('No comparison', ''));
+    status.voices.forEach(v => $('#compareVoice').add(new Option(v.label, v.id)));
+    const browser = candidate.kind === 'browser';
+    $('#upload').disabled = browser;
+    $('#handsFree').disabled = browser;
+    if (browser) $('#handsFree').checked = false;
+    $('#retry').disabled = browser || !lastClip;
+    $('#serviceStatus').textContent = browser
+      ? 'Browser voices ready · ' + (status.stt?.available ? 'microphone recognition supported' : 'no browser recognition; typed turns available')
+      : 'Advanced gateway connected · ' + status.voices.length + ' voices · ' + (status.stt?.available ? 'Whisper ready' : 'STT unavailable');
+    $('#speechPrivacy').textContent = browser
+      ? 'Browser recognition may send microphone speech to your browser provider. Recordings are not uploaded to this site. Browser synthesis cannot export audio files.'
+      : 'Audio clips are sent to your configured Whisper/Kokoro gateway. Private references, model weights and tokens are not embedded in this website.';
     render();
-  } catch (e) { gateway = null; error(e.message); $('#serviceStatus').textContent = 'Voice backend unavailable. Text lab remains available.'; $('#connectionSettings').open = true; }
-};
+  } catch (failure) {
+    gateway = null; capabilities = null;
+    error(failure.message);
+    $('#serviceStatus').textContent = 'Speech engine unavailable · canonical text conversation remains available';
+    if ($('#speechEngine').value === 'gateway') $('#connectionSettings').open = true;
+    render();
+  }
+}
+$('#connect').onclick = connectSpeech;
+$('#speechEngine').onchange = () => { reset(); gateway = null; capabilities = null; connectSpeech(); };
+if (globalThis.speechSynthesis?.addEventListener) {
+  globalThis.speechSynthesis.addEventListener('voiceschanged', () => {
+    if ($('#speechEngine').value === 'browser' && !ttsBusy && !session?.busy && !browserListening) connectSpeech();
+  });
+}
 $('#generate').onclick = async () => {
   const text = $('#speechText').value.trim(); if (!text || ttsBusy) return;
   haltAudio(); ttsController = new AbortController(); const signal = ttsController.signal, epoch = uiEpoch;
@@ -206,21 +238,63 @@ $('#generate').onclick = async () => {
   finally { if (epoch === uiEpoch) { ttsBusy = false; render(); } }
 };
 $('#record').onclick = async () => {
-  if (mic.active) { mic.stop(); return; } error();
-  try { if (session.state === 'stopped') throw Error('Reset the session before recording a new conversation.'); await mic.start({ deviceId: $('#microphone').value, handsFree: $('#handsFree').checked }); await devices(); } catch (e) { mic.stop(true); error(e.message); }
+  if (gateway?.kind === 'browser') {
+    if (browserListening) { browserSpeech.stopListening(); return; }
+    if (!hasBrowserRecognition()) { error('Browser recognition is unavailable. Type a turn or select the Whisper gateway.'); return; }
+    if (session.state === 'stopped') { error('Reset the session before recording again.'); return; }
+    haltAudio(); session.interrupt(); error();
+    const epoch = uiEpoch, controller = new AbortController();
+    browserListenController = controller; browserListening = true;
+    $('#micStatus').textContent = 'Browser microphone listening'; $('#record').textContent = 'Finish listening';
+    try {
+      const result = await browserSpeech.listen({ language: $('#sttLanguage').value, signal: controller.signal });
+      if (epoch === uiEpoch) await acceptRecognizedText(result.rawTranscript, result.backend);
+    } catch (failure) {
+      if (epoch === uiEpoch && failure.name !== 'AbortError') error(failure.message);
+    } finally {
+      if (epoch === uiEpoch) {
+        browserListening = false; browserListenController = null;
+        $('#micStatus').textContent = 'Browser microphone off'; $('#record').textContent = 'Start recording';
+      }
+    }
+    return;
+  }
+  if (mic.active) { mic.stop(); return; }
+  error();
+  try {
+    if (session.state === 'stopped') throw Error('Reset the session before recording a new conversation.');
+    if (!gateway) throw Error('Connect a speech engine first.');
+    await mic.start({ deviceId: $('#microphone').value, handsFree: $('#handsFree').checked });
+    await devices();
+  } catch (failure) { mic.stop(true); error(failure.message); }
 };
-$('#upload').onchange = e => { const file = e.target.files[0]; if (file) { haltAudio(); acceptClip(file); } };
-$('#retry').onclick = () => { if (lastClip) { haltAudio(); acceptClip(lastClip); } };
+$('#upload').onchange = e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (!gateway || gateway.kind === 'browser') {
+    error('Uploaded-audio transcription needs the advanced Whisper gateway. Browser recognition only supports live microphone input.');
+    e.target.value = ''; return;
+  }
+  haltAudio(); acceptClip(file);
+};
+$('#retry').onclick = () => { if (lastClip && gateway?.kind !== 'browser') { haltAudio(); acceptClip(lastClip); } };
+$('#sendTyped').onclick = () => {
+  const text = $('#typedTurn').value.trim();
+  if (!text) { error('Type a turn first.'); return; }
+  if (session.state === 'stopped') { error('Reset the session before adding a turn.'); return; }
+  haltAudio(); browserListenController?.abort(); browserSpeech.abortListening();
+  $('#typedTurn').value = ''; error(); acceptRecognizedText(text, 'typed-input-not-stt');
+};
 $('#start').onclick = () => { if (session.state === 'stopped') reset(); session.options = { ...session.options, ...options() }; session.start(); error(); runLoop(); };
-$('#pause').onclick = () => { session.pause(); haltAudio(); mic.stop(true); };
+$('#pause').onclick = () => { session.pause(); haltAudio(); browserListenController?.abort(); mic.stop(true); };
 $('#resume').onclick = () => { session.resume(); error(); runLoop(); };
 $('#next').onclick = () => { if (session.state !== 'stopped') { if (session.state === 'waiting-human') session.resume(); else session.start(); runLoop(true); } };
-$('#stop').onclick = () => { session.stop(); haltAudio(); mic.stop(true); };
+$('#stop').onclick = () => { session.stop(); haltAudio(); browserListenController?.abort(); mic.stop(true); };
 $('#stopAudio').onclick = haltAudio;
 $('#reset').onclick = reset; $('#mode').onchange = setMode; $('#showDebug').onchange = render;
 $('#speaker').onchange = () => { player.sinkId = $('#speaker').value; };
 $('#pace').oninput = () => { $('#paceValue').textContent = `${Number($('#pace').value).toFixed(2)}×`; };
 $('#export').onclick = () => { const url = URL.createObjectURL(new Blob([JSON.stringify(session.report(), null, 2)], { type: 'application/json' })); const link = document.createElement('a'); link.href = url; link.download = `voice-session-${session.id}.json`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); };
 for (const preset of PRESETS) { const button = document.createElement('button'); button.type = 'button'; button.className = 'ghost'; button.textContent = preset.name; button.onclick = () => { $('#speechText').value = preset.text; $('#language').value = preset.language; }; $('#presets').append(button); }
-window.addEventListener('pagehide', () => { session.stop('Page closed'); haltAudio(); mic.stop(true); objectUrls.forEach(url => URL.revokeObjectURL(url)); });
-setMode(); devices().catch(() => {});
+window.addEventListener('pagehide', () => { session.stop('Page closed'); haltAudio(); browserListenController?.abort(); browserSpeech.abortListening(); mic.stop(true); objectUrls.forEach(url => URL.revokeObjectURL(url)); });
+setMode(); devices().catch(() => {}); connectSpeech();
