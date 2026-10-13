@@ -142,3 +142,10 @@ A **Type a human turn** input is available in the speech-recognition modes when 
 The browser path gives a hostable, interactive demo but does not replace the advanced voice system. To use Kokoro, Whisper, or Seed-VC with a public HTTPS page, operate a separately hosted, authenticated HTTPS voice gateway. The checked-in reference Python service is deliberately loopback-bound and must not be exposed to the public internet without separate authentication, TLS, origin policy, and abuse controls. Nothing in this change deploys private reference voices or model weights to GitHub Pages or Vercel.
 
 To publish the static interface: merge the feature PR, then trigger the existing GitHub Pages workflow or serve the `public/` assets with the existing Node app. The ordinary chat and autonomous conversation modes still require working Giulia/Mei backends (configure the text lab's Internal lab tools). A browser STT/TTS demo can be tested without the Python gateway, but full end-to-end spoken dialogue requires those text backends and a compatible speech browser.
+
+
+### Dual Lab: experimental TTS readout
+
+In the ordinary Dual Lab, enable **Read new replies aloud**, or use **Read aloud** on an individual answer. Browser speech is the default. Open **Use experimental TTS voices** to provide the speech gateway URL and token; click **Connect experimental TTS**, choose Giulia and Mei voices, and keep **Use experimental voices for readout** checked. Responses then pass through the existing authenticated `/v1/tts` contract, including pronunciation segments, with browser-audio playback. Stop controls abort further chunks. This reuses the Voice Lab's Kokoro/Seed-VC voice candidates rather than synthesizing an unrelated persona.
+
+The gateway's authentication token remains in the current tab, never in persisted connection settings. In a public HTTPS deployment, use a properly configured HTTPS voice gateway and explicitly allow that site's origin. If no gateway is available, uncheck the experimental option; the browser voice readout continues to function. Both paths preserve the original generated text and do not feed audio back into the agent.
