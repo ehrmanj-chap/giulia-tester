@@ -96,6 +96,20 @@ export class VoiceSession {
     const turn = { id: uid(), sessionId: this.id, participant, text, createdAt: new Date().toISOString(), errors: [], timings: {}, ...extra };
     this.turns.push(turn); this.notify(); return turn;
   }
+  humanText(rawTranscript, { backend = 'typed', speechEndedAt = now(), sttMs = 0 } = {}) {
+    if (this.state === 'stopped') throw Error('Start a new session before adding a turn.');
+    this.interrupt();
+    const raw = String(rawTranscript ?? '');
+    const text = normalizeTranscript(raw);
+    if (!text) { this.state = 'waiting-human'; this.notify(); throw Error('Enter or recognize a nonempty turn.'); }
+    const turn = this.newTurn('human', text, {
+      rawTranscript: raw, normalizedTranscript: text, sttBackend: backend,
+      timings: { sttMs }, inputStartedAt: speechEndedAt
+    });
+    this.state = this.options.mode === 'stt' ? 'idle' : 'running';
+    this.notify();
+    return turn;
+  }
   async humanAudio(blob, { language = 'auto', speechEndedAt = now() } = {}) {
     if (this.state === 'stopped') throw Error('Start a new session before adding speech.');
     this.interrupt();
