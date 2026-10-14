@@ -10,7 +10,13 @@ const browserSpeech = new BrowserSpeech();
 let browserListening = false, browserListenController = null;
 const objectUrls = new Set();
 const hints = { tts: 'Try a phrase, compare voices, and listen for timing and pronunciation.', stt: 'Record or upload speech. Review the original transcript and recognition time.', 'human-ai': 'Speak to one expert. Their normal text pipeline provides every response.', 'ai-ai': 'Giulia and Mei exchange exact text. Speech is rendered for you to hear.', 'ai-ai-human': 'Join, interrupt, or redirect the discussion. A direct question to you pauses the agents.' };
-try { $('#gatewayUrl').value = localStorage.getItem('voiceLab.gateway') || $('#gatewayUrl').value; } catch {}
+// The hosted UI does NOT host model weights. A bare Vercel preview must never silently select device voices.
+const hostedPreview = location.protocol === 'https:' && !['localhost', '127.0.0.1'].includes(location.hostname);
+try {
+  const saved = localStorage.getItem('voiceLab.gateway');
+  if (saved) $('#gatewayUrl').value = saved;
+  else if (hostedPreview) $('#gatewayUrl').value = '';
+} catch { if (hostedPreview) $('#gatewayUrl').value = ''; }
 function error(message = '') { $('#error').hidden = !message; $('#error').textContent = message; }
 function options() { return { mode: $('#mode').value, agent: $('#agent').value, startingSpeaker: $('#startingSpeaker').value,
   maxTurns: Number($('#maxTurns').value), topic: $('#topic').value, scenario: $('#scenario').value, objective: $('#objective').value, opening: $('#opening').value }; }
@@ -173,12 +179,20 @@ async function devices() {
   $('#speaker').disabled = !('setSinkId' in HTMLMediaElement.prototype);
 }
 async function connectSpeech() {
+  if ($('#speechEngine').value === 'gateway' && !$('#gatewayUrl').value.trim()) {
+    gateway = null; capabilities = null; error();
+    $('#serviceStatus').textContent = 'Custom Kokoro voices not connected · Vercel only hosts this interface. Add an HTTPS gateway URL below.';
+    $('#connectionSettings').open = true; render(); return;
+  }
   error(); $('#serviceStatus').textContent = 'Connecting speech engine…';
   try {
     const candidate = $('#speechEngine').value === 'browser'
       ? browserSpeech : new VoiceGateway($('#gatewayUrl').value, $('#gatewayToken').value);
     const status = await candidate.status();
     if (status.schemaVersion !== 1 || !Array.isArray(status.voices)) throw Error('Unsupported speech engine contract.');
+    if (candidate.kind !== 'browser' && !/kokoro|seed-?vc/i.test(status.tts?.backend || '')) {
+      throw Error('The connected server does not identify as the original Kokoro/Seed-VC speech gateway.');
+    }
     gateway = candidate; capabilities = status;
     if (candidate.kind !== 'browser') {
       try { localStorage.setItem('voiceLab.gateway', candidate.base); } catch {}
@@ -186,11 +200,12 @@ async function connectSpeech() {
     for (const agent of ['giulia', 'mei']) {
       const el = $('#'+agent+'Voice'), previous = el.value;
       el.replaceChildren();
-      status.voices.forEach(v => el.add(new Option(v.label, v.id)));
-      el.value = status.voices.some(v => v.id === previous) ? previous
-        : status.voices.find(v => v.agent === agent && v.default)?.id
-        || status.voices.find(v => v.agent === agent)?.id
-        || status.voices.find(v => v.default)?.id || status.voices[0]?.id || '';
+      // Never silently assign Mei's voice to Giulia or vice versa.
+      const available = candidate.kind === 'browser' ? status.voices : status.voices.filter(v => v.agent === agent);
+      available.forEach(v => el.add(new Option(v.label, v.id)));
+      if (!available.length) el.add(new Option('No '+agent+' voice configured on this gateway', ''));
+      el.value = available.some(v => v.id === previous) ? previous
+        : available.find(v => v.default)?.id || available[0]?.id || '';
     }
     $('#compareVoice').replaceChildren(new Option('No comparison', ''));
     status.voices.forEach(v => $('#compareVoice').add(new Option(v.label, v.id)));
@@ -200,8 +215,8 @@ async function connectSpeech() {
     if (browser) $('#handsFree').checked = false;
     $('#retry').disabled = browser || !lastClip;
     $('#serviceStatus').textContent = browser
-      ? 'Browser voices ready · ' + (status.stt?.available ? 'microphone recognition supported' : 'no browser recognition; typed turns available')
-      : 'Advanced gateway connected · ' + status.voices.length + ' voices · ' + (status.stt?.available ? 'Whisper ready' : 'STT unavailable');
+      ? 'GENERIC DEVICE VOICES · Not Giulia/Mei Kokoro · ' + (status.stt?.available ? 'browser microphone recognition available' : 'type your turns')
+      : 'Kokoro/Seed-VC gateway connected · ' + status.voices.length + ' configured voices · ' + (status.stt?.available ? 'Whisper ready' : 'STT unavailable');
     $('#speechPrivacy').textContent = browser
       ? 'Browser recognition may send microphone speech to your browser provider. Recordings are not uploaded to this site. Browser synthesis cannot export audio files.'
       : 'Audio clips are sent to your configured Whisper/Kokoro gateway. Private references, model weights and tokens are not embedded in this website.';
@@ -209,7 +224,9 @@ async function connectSpeech() {
   } catch (failure) {
     gateway = null; capabilities = null;
     error(failure.message);
-    $('#serviceStatus').textContent = 'Speech engine unavailable · canonical text conversation remains available';
+    $('#serviceStatus').textContent = $('#speechEngine').value === 'gateway'
+      ? 'Original Kokoro voices unavailable · no device-voice substitution'
+      : 'Generic device speech unavailable · canonical text preserved';
     if ($('#speechEngine').value === 'gateway') $('#connectionSettings').open = true;
     render();
   }
