@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { OnDeviceKokoro } from '../public/dual-lab/voice/browser-kokoro.js';
-import { groupSpeechSegments, playKokoroSpeech } from '../public/dual-lab/voice/speech-buffer.js';
+import { OnDeviceKokoro, minimumReasonableSpeechMs } from '../public/dual-lab/voice/browser-kokoro.js';
+import { groupSpeechSegments, playKokoroSpeech, naturalPauseMs } from '../public/dual-lab/voice/speech-buffer.js';
 
 const multilingual=[
   {text:'Hello, everyone!',language:'en-us'},
@@ -31,7 +31,11 @@ test('fused browser Kokoro uses one ONNX run and retains original Giulia blend a
     constructor(type,data,dims){this.type=type;this.data=data;this.dims=dims;}
   }
   const model={
-    tokenizer(text){recorded.phonemes.push(text);return{input_ids:new Tensor('int64',new BigInt64Array([0n,1n,2n,0n]),[1,4])};},
+    tokenizer(text){
+      recorded.phonemes.push(text);
+      const data=text==='…'?[0n,99n,0n]:[0n,1n,2n,0n];
+      return{input_ids:new Tensor('int64',new BigInt64Array(data),[1,data.length])};
+    },
     async generate(text){
       recorded.phonemes.push(text);
       return this.generate_from_ids(this.tokenizer(text).input_ids);
@@ -40,7 +44,7 @@ test('fused browser Kokoro uses one ONNX run and retains original Giulia blend a
     async model({input_ids,style}){
       recorded.inferences++;
       recorded.tensor=input_ids;recorded.style=style;
-      return{waveform:{data:new Float32Array([0,0.2,0.3,0])}};
+      return{waveform:{data:new Float32Array(24000*6)}};
     },
   };
   const kokoro=new OnDeviceKokoro({
@@ -63,8 +67,9 @@ test('fused browser Kokoro uses one ONNX run and retains original Giulia blend a
   assert.equal(result.segmentCount,3);
   assert.deepEqual(result.fusedLanguages,['en-us','it','ja']);
   assert.equal(result.blob.type,'audio/wav');
-  assert.equal(recorded.tensor.data.length,8);
-  assert.deepEqual([...recorded.tensor.data],[0n,1n,2n,1n,2n,1n,2n,0n]);
+  assert.equal(recorded.tensor.data.length,10);
+  assert.deepEqual([...recorded.tensor.data],[0n,1n,2n,99n,1n,2n,99n,1n,2n,0n]);
+  assert.equal(result.insertedPauseTokens,1);
   assert.ok(Math.abs(recorded.style.data[0]-(1*.65+3*.35))<1e-5);
   assert.equal(model.generate_from_ids,originalGenerate,'runtime must be restored after token capture');
   assert.ok(Number.isFinite(result.inferenceMs));
@@ -155,4 +160,49 @@ test('both production lab entrypoints use one Kokoro prebuffer/fusion scheduler,
   assert.match(dual,/phonemizationMs/);
   assert.match(dual,/inferenceMs/);
   assert.match(audio,/betweenClipsGapMs/);
+});
+test('fused synthesis rejects a waveform that only speaks its first word', async()=>{
+  const text=multilingual.map(x=>x.text).join(' ');
+  assert.ok(minimumReasonableSpeechMs(multilingual,1)>1000);
+  assert.ok(minimumReasonableSpeechMs(multilingual,1.5)<minimumReasonableSpeechMs(multilingual,1));
+  class Tensor{constructor(type,data,dims){this.type=type;this.data=data;this.dims=dims;}}
+  const model={
+    tokenizer:t=>({input_ids:new Tensor('int64',new BigInt64Array(t==='…'?[0n,9n,0n]:[0n,1n,2n,0n]),[1,t==='…'?3:4])}),
+    async generate(text){return this.generate_from_ids(this.tokenizer(text).input_ids);},
+    generate_from_ids:async()=>{throw Error('Unpatched');},
+    model:async()=>({waveform:{data:new Float32Array(24000)}}),
+  };
+  const runtime=new OnDeviceKokoro({
+    loader:async()=>({KokoroTTS:{from_pretrained:async()=>model}}),
+    italianLoader:async()=>({roa:{},default:async()=>({setVoice(){},textToIpa:()=> 'bwɔnˈdʒorno'})}),
+    japaneseLoader:async()=>({KokoroJP:class{
+      constructor(tts){this.tts=tts;}
+      async speak(){return this.tts.generate_from_ids(this.tts.tokenizer('konnichiwa').input_ids);}
+    }}),
+    fetchImpl:async()=>new Response(new Float32Array(510*256).fill(2).buffer),
+  });
+  await assert.rejects(runtime.synthesizeMixed({segments:multilingual,voice:'giulia-blend'}),
+    /Incomplete Kokoro fusion/);
+  assert.equal(model.generate_from_ids.name,'generate_from_ids');
+});
+test('natural pauses separate speech clips by language without 20-second processing gaps',async()=>{
+  assert.equal(naturalPauseMs([multilingual[0]],[multilingual[1]]),180);
+  assert.equal(naturalPauseMs([multilingual[1]],[multilingual[2]]),180);
+  assert.equal(naturalPauseMs([{text:'Hello!',language:'en-us'}],[{text:'World',language:'en-us'}]),125);
+  assert.equal(naturalPauseMs([{text:'hello',language:'en-us'}],[{text:'world',language:'en-us'}]),65);
+  assert.equal(naturalPauseMs(null,[multilingual[0]]),0);
+});
+test('separate Kokoro clips receive an intentional short breath with no paid device fallback', async()=>{
+  const gaps=[], played=[];
+  await playKokoroSpeech({
+    segments:multilingual,provider:{
+      synthesizeMixed:async()=>{throw Error('Short waveform');},
+      synthesize:async({text})=>({...clip, text}),
+    },
+    voice:'mei-blend',
+    pause:async(ms)=>gaps.push(ms),
+    play:async(blob,{onPlaying})=>{played.push(blob);onPlaying?.();},
+  });
+  assert.deepEqual(gaps,[180,180]);
+  assert.equal(played.length,3);
 });

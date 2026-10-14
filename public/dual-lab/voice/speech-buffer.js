@@ -12,6 +12,27 @@ const ABORT = () => new DOMException('Playback stopped.', 'AbortError');
 const ensureActive = signal => { if (signal?.aborted) throw ABORT(); };
 const soundLength = text => [...text].reduce((n,c) => n + (JP.test(c) ? 3 : 2), 0);
 
+// Deliberate linguistic breath between completed clips, not a wait for compute.
+// In fused clips, Kokoro's ellipsis punctuation token supplies the phrasing.
+export function naturalPauseMs(previous, next) {
+  if (!previous?.length || !next?.length) return 0;
+  const last = previous.at(-1), first = next[0];
+  if (last.language !== first.language) return 180;
+  return /[.!?。！？…]$/u.test(last.text.trim()) ? 125 : 65;
+}
+function pauseBeforeNextClip(ms, signal) {
+  if (!ms) return Promise.resolve();
+  if (signal?.aborted) return Promise.reject(ABORT());
+  return new Promise((resolve, reject) => {
+    const onAbort = () => { clearTimeout(timer); reject(ABORT()); };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener('abort', onAbort, {once:true});
+  });
+}
+
 export function groupSpeechSegments(segments, { maxCharacters = 190, maxTokenEstimate = 400, maxSpans = 9 } = {}) {
   if (!Array.isArray(segments)) throw TypeError('Expected speech segments.');
   const groups = [];
@@ -40,6 +61,7 @@ export function groupSpeechSegments(segments, { maxCharacters = 190, maxTokenEst
 export async function playKokoroSpeech({
   segments, provider, voice, speech = {}, play, signal, onStatus = () => {},
   onClip = () => {}, onPlaying = () => {}, smooth = true,
+  pause = pauseBeforeNextClip,
 } = {}) {
   const batches = groupSpeechSegments(segments || []);
   if (typeof play !== 'function' || !provider || typeof provider.synthesize !== 'function') {
@@ -65,7 +87,7 @@ export async function playKokoroSpeech({
         // fusion, preserve the original Kokoro voices via per-span synthesis.
         // Never silently switch to device/system speechSynthesis.
         metrics.fusionFallbacks++;
-        onStatus('Mixed phoneme fusion unavailable; preparing individual Kokoro clips.');
+        onStatus('Kokoro fusion incomplete or unsupported; preparing full-length buffered phrases.');
       }
     }
     if (!clips) {
@@ -85,9 +107,12 @@ export async function playKokoroSpeech({
     metrics.generationMs += Number(clip.generationMs)||0;
     onClip(clip,spans);
   }
-  let lastEndedAt = null;
+  let lastEndedAt = null, lastSpans = null;
   async function speak(items) {
     for (const {clip,segments:spans} of items) {
+      ensureActive(signal);
+      const pauseMs=naturalPauseMs(lastSpans,spans);
+      if(pauseMs) await pause(pauseMs,signal);
       ensureActive(signal);
       record(clip,spans);
       await play(clip.blob,{
@@ -98,16 +123,17 @@ export async function playKokoroSpeech({
         },
       });
       lastEndedAt=performance.now();
+      lastSpans=spans;
     }
   }
 
   if (bufferAll) {
     const all = [];
     for (let index=0;index<batches.length;index++) {
-      onStatus('Preparing Kokoro speech '+(index+1)+'/'+batches.length+' · no pauses once playback begins');
+      onStatus('Preparing complete Kokoro speech '+(index+1)+'/'+batches.length+' · natural phrase pauses');
       all.push(...await build(batches[index]));
     }
-    onStatus('Audio ready · playing continuous Kokoro speech');
+    onStatus('Full speech ready · playing with natural phrase boundaries');
     await speak(all);
   } else {
     // One-batch lookahead minimizes startup time for long utterances.
