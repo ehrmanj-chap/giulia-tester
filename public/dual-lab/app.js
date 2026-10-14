@@ -19,13 +19,18 @@ function stopReadout(){
 async function playReadout(text, agent){
   readoutEpoch++;readoutController?.abort();readout.stop();readoutPlayer.stop();
   const epoch=readoutEpoch, useGateway=$('#preferGatewayReadout').checked;
-  if(useGateway&&!readoutGateway){$('#readoutStatus').textContent='Connect the experimental TTS gateway first';return;}
+  if(useGateway&&!readoutGateway){
+    $('#readoutStatus').textContent='Kokoro not connected · no generic Microsoft voice substitution';
+    $('#readoutGatewayStatus').textContent='Connect the original Kokoro/Seed-VC service using a local or HTTPS endpoint.';
+    $('.readout-advanced').open=true;return;
+  }
   if(!useGateway&&!hasBrowserSpeech()){ $('#readoutStatus').textContent='Browser speech unavailable. Connect experimental TTS instead.';return; }
   const controller=new AbortController();readoutController=controller;
   $('#readoutStatus').textContent='Reading '+AGENTS[agent].name+(useGateway?' · experimental voice':' · browser voice')+'…';
   try {
     const language=$('#readoutLanguage').value;
     const voice=$('#'+agent+'ReadoutVoice').value;
+    if(useGateway&&!voice)throw Error('The speech gateway does not have a configured '+AGENTS[agent].name+' voice.');
     for(const chunk of speechSegments(text,language)){
       if(controller.signal.aborted)break;
       if(useGateway){
@@ -135,13 +140,22 @@ $('#clearConnection').addEventListener('click',()=>{connections[selectedAgent]={
 $('#checkBackend').addEventListener('click',()=>checkBackend());
 $('#stopReadout').addEventListener('click',stopReadout);
 $('#readoutLanguage').addEventListener('change',stopReadout);
-try { $('#readoutGatewayUrl').value=localStorage.getItem('voiceLab.gateway')||$('#readoutGatewayUrl').value; } catch {}
+// No model is present on Vercel. A hosted URL must be configured explicitly.
+const hostedReadout=location.protocol==='https:'&&!['localhost','127.0.0.1'].includes(location.hostname);
+try{
+  const previous=localStorage.getItem('voiceLab.gateway');
+  if(previous)$('#readoutGatewayUrl').value=previous;
+  else if(hostedReadout)$('#readoutGatewayUrl').value='';
+}catch{if(hostedReadout)$('#readoutGatewayUrl').value='';}
+$('#readoutGatewayUrl').placeholder='https://your-kokoro-voice-gateway.example';
 $('#preferGatewayReadout').addEventListener('change',()=>{
-  if($('#preferGatewayReadout').checked&&!readoutGateway){
-    $('#preferGatewayReadout').checked=false;
-    $('#readoutGatewayStatus').textContent='Connect a speech gateway before selecting experimental voices.';
-  }
   stopReadout();
+  if($('#preferGatewayReadout').checked&&!readoutGateway){
+    $('#readoutGatewayStatus').textContent='Kokoro selected but not connected. No generic voices will play until the original gateway is connected.';
+    $('.readout-advanced').open=true;
+  }else if(!$('#preferGatewayReadout').checked){
+    $('#readoutGatewayStatus').textContent='Generic device voices enabled by choice. These are not the Kokoro/Seed-VC research voices.';
+  }
 });
 $('#connectReadoutGateway').addEventListener('click',async()=>{
   stopReadout();
@@ -150,21 +164,22 @@ $('#connectReadoutGateway').addEventListener('click',async()=>{
     const candidate=new VoiceGateway($('#readoutGatewayUrl').value,$('#readoutGatewayToken').value);
     const status=await candidate.status();
     if(status.schemaVersion!==1||!Array.isArray(status.voices)||!status.voices.length)throw Error('No compatible voices provided.');
+    if(!/kokoro|seed-?vc/i.test(status.tts?.backend||''))throw Error('This service is not the Kokoro/Seed-VC voice gateway.');
     for(const agent of ['giulia','mei']){
       const selection=$('#'+agent+'ReadoutVoice'),prior=selection.value;
       selection.replaceChildren();
-      status.voices.forEach(v=>selection.add(new Option(v.label,v.id)));
-      selection.value=status.voices.find(v=>v.id===prior)?.id
-        ||status.voices.find(v=>v.agent===agent&&v.default)?.id
-        ||status.voices.find(v=>v.agent===agent)?.id
-        ||status.voices.find(v=>v.default)?.id||status.voices[0].id;
+      const agentVoices=status.voices.filter(v=>v.agent===agent);
+      if(!agentVoices.length)throw Error('Missing configured '+agent+' Kokoro voice on this gateway.');
+      agentVoices.forEach(v=>selection.add(new Option(v.label,v.id)));
+      selection.value=agentVoices.find(v=>v.id===prior)?.id
+        ||agentVoices.find(v=>v.default)?.id||agentVoices[0].id;
     }
     readoutGateway=candidate;
     $('#preferGatewayReadout').checked=true;
-    $('#readoutGatewayStatus').textContent='Connected · '+status.voices.length+' experimental voices. Future readouts use this service while selected.';
+    $('#readoutGatewayStatus').textContent='Original Kokoro gateway connected · '+status.voices.length+' configured voices. Giulia and Mei will use their own voices.';
   }catch(failure){
-    readoutGateway=null;$('#preferGatewayReadout').checked=false;
-    $('#readoutGatewayStatus').textContent='Could not connect: '+failure.message+' Browser speech remains available.';
+    readoutGateway=null; // Keep custom voices selected: never revert silently to device TTS.
+    $('#readoutGatewayStatus').textContent='Kokoro connection unavailable: '+failure.message+' No browser-voice substitution occurred.';
   }
 });
 $('#resetChat').addEventListener('click',()=>{if(pending[selectedAgent])return;stopReadout();histories[selectedAgent]=[];runDiagnostics[selectedAgent]=null;drafts[selectedAgent]='';render();$('#input').focus();});
