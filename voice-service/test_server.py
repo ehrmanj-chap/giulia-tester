@@ -37,6 +37,19 @@ class GatewayTests(unittest.TestCase):
             return urllib.request.urlopen(req, timeout=2)
         except urllib.error.HTTPError as error:
             return error
+    def test_hosted_kokoro_origin_can_be_added_without_changing_private_config(self):
+        from unittest.mock import patch
+        with patch.dict(module.os.environ, {"VOICE_LAB_ALLOWED_ORIGINS": "https://giulia-tester.vercel.app,https://preview.example"}):
+            origins = module.allowed_origins({"allowedOrigins": ["http://127.0.0.1:8787"]})
+            self.assertEqual(origins, ["http://127.0.0.1:8787", "https://giulia-tester.vercel.app", "https://preview.example"])
+
+    def test_hosted_voice_origins_must_be_explicit_and_secure(self):
+        from unittest.mock import patch
+        for invalid in ("*", "http://preview.example", "https://preview.example/path", "https://user:pw@example.com", "https://preview.example/?token=secret"):
+            with patch.dict(module.os.environ, {"VOICE_LAB_ALLOWED_ORIGINS": invalid}):
+                with self.assertRaises(ValueError):
+                    module.allowed_origins({})
+
     def test_requires_token(self):
         self.assertEqual(self.request("/v1/status", headers={"X-Other": "x"}).code, 401)
     def test_rejects_foreign_origins_even_with_valid_token(self):
