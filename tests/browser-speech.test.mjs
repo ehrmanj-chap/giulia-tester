@@ -90,3 +90,26 @@ test('hosted lab exposes navigation, five modes, readout and typed conversation 
   for (const mode of ['tts', 'stt', 'human-ai', 'ai-ai', 'ai-ai-human']) assert.ok(voice.includes('value="' + mode + '"'));
   for (const id of ['speechEngine', 'sendTyped', 'typedTurn', 'gatewayToken']) assert.ok(voice.includes('id="' + id + '"'));
 });
+
+
+test('Dual Lab exposes independently playable Giulia and Mei voices and begins Kokoro preloading on page open', () => {
+  const html = fs.readFileSync(new URL('../public/dual-lab/index.html', import.meta.url), 'utf8');
+  const code = fs.readFileSync(new URL('../public/dual-lab/app.js', import.meta.url), 'utf8');
+  assert.match(html, /id="testReadout"/);
+  assert.match(html, /id="voiceWarmupStatus"/);
+  assert.match(html, /id="readoutEngine"/);
+  assert.match(html, /value="ondevice"/);
+  assert.match(code, /onDeviceReadout\.preload\(\{languages:\['it','ja'\]\}\)/);
+  assert.match(code, /requestIdleCallback\(warmDualLabKokoro/);
+  assert.match(code, /VOICE_AUDITION\[selectedAgent\]/);
+  assert.match(code, /voice:?'?\/?.*blend|agent\+'-blend'/);
+  assert.match(code, /languageAwareSpeechSegments\(text,language\)/);
+  assert.match(code, /\[\[it\]\]/);
+  assert.match(code, /\[\[ja\]\]/);
+});
+test('Audio Lab preload and language switch are wired independently of Dual Lab', () => {
+  const code=fs.readFileSync(new URL('../public/dual-lab/voice/app.js',import.meta.url),'utf8');
+  assert.match(code,/localKokoro\.preload\(\{ languages:\['it','ja'\] \}\)/);
+  assert.match(code,/languageAwareSpeechSegments\(turn\.text, language\)/);
+  assert.match(code,/turn\.detectedLanguages/);
+});
