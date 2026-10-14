@@ -12,3 +12,13 @@ voice-service/.venv/
 voice-service/*.local.json
 voice-service/__pycache__/
 *.pyc
+
+# Private voice bundles and local model snapshots must never enter Git.
+private-cloud-assets/
+cloud_voice/private-assets/
+*.onnx
+*.safetensors
+*.ckpt
+*.pth
+*.pt
+*.wav
