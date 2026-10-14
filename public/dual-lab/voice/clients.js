@@ -9,10 +9,41 @@ export async function callAgent(agent, messages, { signal } = {}) {
   const connection = loadConnections()[agent];
   if (!connection?.base) throw Error(`Connect ${agent} in the text lab's Internal lab tools first.`);
   const res = await fetch(endpointUrl(connection.base, '/api/chat'), { method: 'POST', signal: combinedSignal(signal, 240000),
-    headers: { 'Content-Type': 'application/json', ...(connection.token ? { 'X-Giulia-Lab-Token': connection.token } : {}) },
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/x-ndjson, application/json', ...(connection.token ? { 'X-Giulia-Lab-Token': connection.token } : {}) },
     body: JSON.stringify({ messages }) });
-  if (!res.headers.get('content-type')?.includes('application/json')) throw Error('Agent backend returned a non-JSON response. Check its connection.');
-  const data = await res.json(); if (!res.ok) throw Error(data.error || `Agent HTTP ${res.status}`); return data;
+  const type = res.headers.get('content-type') || '';
+  if (type.includes('application/x-ndjson')) {
+    if (!res.ok) throw Error(`Agent HTTP ${res.status}`);
+    if (!res.body) throw Error('Agent streaming response has no readable body.');
+    const reader = res.body.getReader(), decoder = new TextDecoder();
+    let buffer = '', result = null;
+    const handle = line => {
+      if (!line.trim()) return;
+      const event = JSON.parse(line);
+      if (event.type === 'error') throw Error(event.error || 'Agent stream failed.');
+      if (event.type === 'result') result = event;
+    };
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+        const lines = buffer.split('\n'); buffer = lines.pop() || '';
+        for (const line of lines) handle(line);
+        if (done) break;
+      }
+      if (buffer.trim()) handle(buffer);
+    } finally { reader.releaseLock(); }
+    if (!result || typeof result.reply !== 'string' || !result.reply.trim()) {
+      throw Error('Agent stream ended without a valid final reply.');
+    }
+    if (result.ok === false) throw Error(result.error || 'Agent response failed.');
+    return result;
+  }
+  if (!type.includes('application/json')) throw Error(`Agent backend returned an unsupported response (HTTP ${res.status}). Check its connection.`);
+  const data = await res.json();
+  if (!res.ok || data.ok === false) throw Error(data.error || `Agent HTTP ${res.status}`);
+  if (typeof data.reply !== 'string' || !data.reply.trim()) throw Error('Agent returned an empty final reply.');
+  return data;
 }
 export class VoiceGateway {
   constructor(base, token = '') { this.base = validGateway(base); this.token = token; }
