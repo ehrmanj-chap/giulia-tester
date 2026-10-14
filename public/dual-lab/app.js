@@ -9,12 +9,17 @@ const AGENTS = {
   giulia:{name:'Giulia',label:'Giulia (Italy Expert)',country:'ITALY',description:'Italian cultural and business intelligence',welcome:'Ciao! What would you like to explore about life, culture, or business in Italy?'},
   mei:{name:'Mei',label:'Mei (Japan Expert)',country:'JAPAN',description:'Japanese cultural and business intelligence',welcome:'Konnichiwa! What would you like to explore about daily life, culture, or business in Japan?'}
 };
+const VOICE_AUDITION = Object.freeze({
+  giulia:'[[it]]Buongiorno a tutti! Mi chiamo Giulia e sono felice di conoscervi.[[/it]] And now, a greeting in Japanese: [[ja]]こんにちは、みなさん。よろしくお願いします。[[/ja]]',
+  mei:'[[ja]]こんにちは！私はメイです。今日はどうぞよろしくお願いします。[[/ja]] And a little Italian: [[it]]Buonasera! Grazie mille per essere qui.[[/it]]',
+});
 let selectedAgent='giulia', connections=loadConnections();
 const histories={giulia:[],mei:[]}, pending={giulia:false,mei:false}, thinkingRoutes={giulia:null,mei:null}, health={giulia:null,mei:null}, checkIds={giulia:0,mei:0}, runDiagnostics={giulia:null,mei:null}, drafts={giulia:'',mei:''};
 const readout=new BrowserSpeech(), readoutPlayer=new AudioPlayer();
 const onDeviceReadout=new OnDeviceKokoro({
   onStatus: message => {
     if ($('#readoutEngine').value === 'ondevice') $('#readoutStatus').textContent = message;
+    $('#voiceWarmupStatus').textContent = message;
   },
 });
 let readoutEpoch=0,readoutController=null,readoutGateway=null;
@@ -148,6 +153,7 @@ $('#saveConnection').addEventListener('click',()=>{
 $('#clearConnection').addEventListener('click',()=>{connections[selectedAgent]={base:defaultBackendFor(selectedAgent),token:''};saveConnections(connections);render();checkBackend();});
 $('#checkBackend').addEventListener('click',()=>checkBackend());
 $('#stopReadout').addEventListener('click',stopReadout);
+$('#testReadout').addEventListener('click',()=>playReadout(VOICE_AUDITION[selectedAgent],selectedAgent));
 $('#readoutLanguage').addEventListener('change',stopReadout);
 // No model is present on Vercel. A hosted URL must be configured explicitly.
 const hostedReadout=location.protocol==='https:'&&!['localhost','127.0.0.1'].includes(location.hostname);
@@ -208,10 +214,12 @@ function warmDualLabKokoro(){
   const network=navigator.connection||navigator.mozConnection||navigator.webkitConnection;
   if(network?.saveData||/^(slow-2g|2g)$/i.test(network?.effectiveType||'')){
     $('#readoutStatus').textContent='Data saver: Kokoro loads on first interaction.';
+    $('#voiceWarmupStatus').textContent='Data saver on · Kokoro loads when you interact';
     return;
   }
   void onDeviceReadout.preload({languages:['it','ja']}).catch(e=>{
     if($('#readoutEngine').value==='ondevice')$('#readoutStatus').textContent='Kokoro preload needs retry: '+e.message;
+    $('#voiceWarmupStatus').textContent='Kokoro preload interrupted · retry on first use';
   });
 }
 if(typeof requestIdleCallback==='function')requestIdleCallback(warmDualLabKokoro,{timeout:1400});
