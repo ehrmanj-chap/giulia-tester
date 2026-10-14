@@ -287,6 +287,31 @@ def load_config(path):
             voice["reference"] = resolve(voice["reference"])
     return config
 
+def allowed_origins(config):
+    """Exact explicit origins for local use and hosted previews; no wildcard CORS.
+
+    VOICE_LAB_ALLOWED_ORIGINS adds browser origins without editing the private
+    local config or ever bundling model paths, references or auth tokens.
+    """
+    defaults = config.get("allowedOrigins", ["http://127.0.0.1:8787", "http://localhost:8787"])
+    extras = os.environ.get("VOICE_LAB_ALLOWED_ORIGINS", "").split(",")
+    origins = []
+    for item in [*defaults, *extras]:
+        origin = str(item).strip()
+        if not origin:
+            continue
+        parsed = urlsplit(origin)
+        if (origin == "*" or parsed.scheme not in {"http", "https"} or not parsed.netloc
+                or parsed.username or parsed.password or parsed.query or parsed.fragment
+                or origin != f"{parsed.scheme}://{parsed.netloc}"):
+            raise ValueError("Voice origins must be explicit HTTP(S) origins without wildcards, paths or credentials.")
+        if parsed.scheme == "http" and parsed.hostname not in {"localhost", "127.0.0.1", "::1"}:
+            raise ValueError("Remote voice origins must use HTTPS.")
+        if origin not in origins:
+            origins.append(origin)
+    return origins
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True)
@@ -295,9 +320,7 @@ def main():
     args = parser.parse_args()
     config = load_config(args.config)
     token = os.environ.get("VOICE_LAB_TOKEN") or config.get("token") or secrets.token_urlsafe(24)
-    origins = config.get("allowedOrigins", ["http://127.0.0.1:8787", "http://localhost:8787"])
-    if "*" in origins:
-        raise ValueError("Use explicit browser origins, not a wildcard.")
+    origins = allowed_origins(config)
     if args.host not in {"127.0.0.1", "localhost", "::1"}:
         raise ValueError("This desktop service binds only to loopback. Use an authenticated HTTPS gateway for remote access.")
     if not os.environ.get("VOICE_LAB_TOKEN") and not config.get("token"):
