@@ -55,17 +55,33 @@ If that experiment used private Seed-VC references, it cannot be reproduced
 from these public profiles alone. Private trained model weights/recordings
 remain private and were not committed.
 
-The upstream JavaScript phonemizer currently supports **English**. Italian
-and Japanese voice **timbres** may be heard when reading English; true native
-Italian/Japanese pronunciation, multi-reference conversion, native Whisper
-recognition, and the Seed-VC acoustic reference models remain in the original
-Python gateway. Selecting Italian/Japanese for browser Kokoro produces a
-visible unsupported-mode error, never an implicit switch to a generic voice.
+**Multilingual browser upgrade (October 13):** The upstream Kokoro-JS phonemizer
+handles English. We now add Italian through **ephone eSpeak WASM** and Japanese
+through **kokoro-js-jp/Open JTalk WASM**. Each phonemizer feeds Kokoro's tokenizer,
+while the output style vector stays Giulia's or Mei's original public blend.
+Automatic span detection changes phonemization on mixed-language replies.
+This is a real G2P pipeline, not romanization or device text-to-speech; however
+it still requires listening tests on actual Italian/Japanese speech.
+
+The Japanese G2P downloads a separate approximately 24 MB compressed Open JTalk
+dictionary, expands it within its browser worker, and requires considerably more
+runtime memory. Italian G2P downloads an eSpeak-derived WASM package with a
+Romance-language pack. Ephone is GPL-3.0-or-later licensed; verify the license
+and source-distribution obligations before broader distribution or embedding.
+The separate Apache-2.0 kokoro-js-jp project includes Open JTalk and dictionary
+attributions in THIRD_PARTY_NOTICES.md.
+
+**Still absent:** private Seed-VC reference-conditioned voice conversion,
+full-duplex conversations, locally hosted Whisper ASR, and proof of accent
+quality. G2P does not guarantee natural rhythm or that a mixed-language voice
+maintains native acoustics. Browser speech recognition remains a distinct
+vendor-provided feature.
 
 ## Frontend choices
 
 Audio Lab `/dual-lab/voice/`:
-- Default **Giulia + Mei · Kokoro on this device**.
+- Default **Giulia + Mei · Kokoro on this device**, prewarming ONNX weights
+  and the two language engines on page open (deferred under browser data saver).
 - **Original Python Kokoro / Whisper gateway** only for researchers with an
   already-running service. It is separate from hosting, not required for the
   free pathway.
@@ -77,7 +93,8 @@ Audio Lab `/dual-lab/voice/`:
   `typed-input-not-stt`.
 
 Dual Lab `/dual-lab/`:
-- **Read aloud** and automatic readout now select Kokoro on-device by default.
+- **Read aloud** and automatic readout now select Kokoro on-device by default,
+  also preloading model and voice data when the Dual Lab page opens.
 - Original Python gateway and generic system voice playback remain manual
   source choices.
 - The original canonical response text never changes as a result of playback.

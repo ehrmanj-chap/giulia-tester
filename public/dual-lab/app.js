@@ -3,7 +3,7 @@ import { BrowserSpeech, hasBrowserSpeech } from './voice/browser-speech.js';
 import { VoiceGateway } from './voice/clients.js';
 import { AudioPlayer } from './voice/audio.js';
 import { OnDeviceKokoro } from './voice/browser-kokoro.js';
-import { speechSegments } from './voice/core.js';
+import { languageAwareSpeechSegments } from './voice/language-detect.js';
 const $ = s => document.querySelector(s);
 const AGENTS = {
   giulia:{name:'Giulia',label:'Giulia (Italy Expert)',country:'ITALY',description:'Italian cultural and business intelligence',welcome:'Ciao! What would you like to explore about life, culture, or business in Italy?'},
@@ -39,7 +39,7 @@ async function playReadout(text, agent){
     const language=$('#readoutLanguage').value;
     const voice=mode==='gateway'?$('#'+agent+'ReadoutVoice').value:agent+'-blend';
     if(mode==='gateway'&&!voice)throw Error('Missing configured '+AGENTS[agent].name+' gateway voice.');
-    for(const chunk of speechSegments(text,language)){
+    for(const chunk of languageAwareSpeechSegments(text,language)){
       if(controller.signal.aborted)break;
       if(mode==='browser'){
         await readout.speak({text:chunk.text,language:chunk.language,voice:'browser:default',speech:{pace:1}},{signal:controller.signal});
@@ -161,7 +161,7 @@ $('#readoutEngine').addEventListener('change',()=>{
   stopReadout();
   const mode=$('#readoutEngine').value;
   $('#readoutStatus').textContent=mode==='ondevice'
-    ? 'Kokoro seed blends · first use downloads the model · no server inference cost'
+    ? 'Kokoro seed blends · warming when the page opens · no server inference cost'
     : mode==='gateway'
       ? 'Original Python gateway selected · connect it under advanced controls'
       : 'Generic system voices enabled explicitly · NOT Kokoro';
@@ -203,4 +203,24 @@ $('#chatForm').addEventListener('submit',async e=>{
   catch(e){histories[agent].push({role:'assistant',content:`The response could not be completed: ${e.message}`,error:true});}
   finally{pending[agent]=false;thinkingRoutes[agent]=null;if(selectedAgent===agent){render();$('#input').focus();if(completedReply&&$('#autoReadout').checked)void playReadout(completedReply,agent);}}
 });
+function warmDualLabKokoro(){
+  if($('#readoutEngine').value!=='ondevice')return;
+  const network=navigator.connection||navigator.mozConnection||navigator.webkitConnection;
+  if(network?.saveData||/^(slow-2g|2g)$/i.test(network?.effectiveType||'')){
+    $('#readoutStatus').textContent='Data saver: Kokoro loads on first interaction.';
+    return;
+  }
+  void onDeviceReadout.preload({languages:['it','ja']}).catch(e=>{
+    if($('#readoutEngine').value==='ondevice')$('#readoutStatus').textContent='Kokoro preload needs retry: '+e.message;
+  });
+}
+if(typeof requestIdleCallback==='function')requestIdleCallback(warmDualLabKokoro,{timeout:1400});
+else setTimeout(warmDualLabKokoro,180);
+const warmWhenUsed=()=>{
+  if($('#readoutEngine').value==='ondevice'&&!onDeviceReadout.modelPromise){
+    void onDeviceReadout.preload({languages:['it','ja']}).catch(()=>{});
+  }
+};
+window.addEventListener('pointerdown',warmWhenUsed,{once:true,capture:true});
+window.addEventListener('keydown',warmWhenUsed,{once:true,capture:true});
 render();

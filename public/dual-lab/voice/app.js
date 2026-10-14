@@ -4,6 +4,7 @@ import { AudioPlayer, Microphone } from './audio.js';
 import { BrowserSpeech, hasBrowserRecognition } from './browser-speech.js';
 import { OnDeviceKokoro } from './browser-kokoro.js';
 import { PRESETS } from './presets.js';
+import { languageAwareSpeechSegments, spokenLanguages } from './language-detect.js';
 const $ = selector => document.querySelector(selector);
 const player = new AudioPlayer();
 let gateway, capabilities, session, loopRunning = false, lastClip, ttsController, uiEpoch = 0, ttsBusy = false;
@@ -15,7 +16,7 @@ const localKokoro = new OnDeviceKokoro({
 });
 let browserListening = false, browserListenController = null;
 const objectUrls = new Set();
-const hints = { tts: 'Try a phrase, compare voices, and listen for timing and pronunciation.', stt: 'Record or upload speech. Review the original transcript and recognition time.', 'human-ai': 'Speak to one expert. Their normal text pipeline provides every response.', 'ai-ai': 'Giulia and Mei exchange exact text. Speech is rendered for you to hear.', 'ai-ai-human': 'Join, interrupt, or redirect the discussion. A direct question to you pauses the agents.' };
+const hints = { tts: 'Try Italian and Japanese in a single sentence. The app detects language spans and changes phonemization without changing voice identity.', stt: 'Record or upload speech. Review the original transcript and recognition time.', 'human-ai': 'Speak to one expert. Their normal text pipeline provides every response.', 'ai-ai': 'Giulia and Mei exchange exact text. Speech is rendered for you to hear.', 'ai-ai-human': 'Join, interrupt, or redirect the discussion. A direct question to you pauses the agents.' };
 // The hosted UI does NOT host model weights. A bare Vercel preview must never silently select device voices.
 const hostedPreview = location.protocol === 'https:' && !['localhost', '127.0.0.1'].includes(location.hostname);
 try {
@@ -56,7 +57,7 @@ function render() {
       header.append(document.createTextNode(AGENTS[turn.participant]?.name || 'You'));
       const text = document.createElement('p'); text.textContent = turn.text;
       const meta = document.createElement('div'); meta.className = 'turn-meta';
-      meta.textContent = [turn.voiceLabel, turn.audioStatus, ...Object.entries(turn.timings).filter(([, v]) => Number.isFinite(v)).map(([k, v]) => `${k.replace(/Ms$/, '')}: ${(v / 1000).toFixed(2)}s`), ...turn.errors.map(e => `${e.stage}: ${e.message}`)].filter(Boolean).join(' · ');
+      meta.textContent = [turn.voiceLabel, turn.detectedLanguages?.length ? 'G2P: ' + turn.detectedLanguages.join(' → ') : null, turn.audioStatus, ...Object.entries(turn.timings).filter(([, v]) => Number.isFinite(v)).map(([k, v]) => `${k.replace(/Ms$/, '')}: ${(v / 1000).toFixed(2)}s`), ...turn.errors.map(e => `${e.stage}: ${e.message}`)].filter(Boolean).join(' · ');
       article.append(header, text, meta);
       if (turn.audio?.length) {
         const actions = document.createElement('div'); actions.className = 'clip-actions';
@@ -74,7 +75,7 @@ function render() {
           if (session.busy || session.state === 'running') session.pause();
           haltAudio(); ttsController = new AbortController();
           try {
-            for (const segment of speechSegments(turn.text, turn.ttsParameters?.language || 'en-us')) {
+            for (const segment of languageAwareSpeechSegments(turn.text, turn.ttsParameters?.language || 'en-us')) {
               await browserSpeech.speak({ ...segment, voice: turn.voice, speech: turn.ttsParameters }, { signal: ttsController.signal });
             }
           } catch (failure) { if (failure.name !== 'AbortError') error(failure.message); }
@@ -101,7 +102,11 @@ async function renderSpeech(turn, { signal } = {}) {
   const voiceInfo = capabilities.voices.find(v => v.id === voice);
   turn.voice = voice; turn.voiceLabel = voiceInfo?.label || voice; turn.ttsBackend = voiceInfo?.backend || capabilities.tts.backend;
   turn.ttsParameters = { language, ...speechSpec({ ...turn.speech, pace: Number($('#pace').value) }) };
-  turn.audio = []; turn.chunks = []; const segments = speechSegments(turn.text, language); const started = performance.now(); let first = true, generationMs = 0;
+  turn.audio = []; turn.chunks = [];
+  const segments = languageAwareSpeechSegments(turn.text, language);
+  turn.languageSpans = segments.map(({ text, language, source })=>({ text, language, source }));
+  turn.detectedLanguages = [...new Set(segments.map(part => part.language))];
+  const started = performance.now(); let first = true, generationMs = 0;
   if (gateway.kind === 'browser') {
     turn.audioStatus = 'playing'; render();
     for (const segment of segments) {
@@ -222,17 +227,17 @@ async function connectSpeech() {
     if (browser || ondevice) $('#handsFree').checked = false;
     $('#retry').disabled = browser || ondevice || !lastClip;
     $('#serviceStatus').textContent = ondevice
-      ? 'Kokoro seed voice blends ready to download on first speech · all TTS inference stays in this browser'
+      ? 'Kokoro on-device initialized · preloading model and native phonemizers in background'
       : browser
         ? 'GENERIC DEVICE VOICES · Not Giulia/Mei Kokoro · ' + (status.stt?.available ? 'browser microphone recognition available' : 'type your turns')
         : 'Original Kokoro gateway connected · ' + status.voices.length + ' voices · ' + (status.stt?.available ? 'Whisper ready' : 'STT unavailable');
     $('#engineDetail').textContent = ondevice
-      ? 'Kokoro ONNX q8 (~90 MB) is downloaded and cached locally when you generate speech. Giulia and Mei use the checked-in seed style blends, NOT the private Seed-VC reference variants. Browser phonemization is English-only here. The model and reference styles come from public Hugging Face assets.'
+      ? 'Kokoro ONNX q8 loads when the page opens and remains cached by your browser. The voice blend remains fixed while English, Italian (eSpeak WASM), and Japanese (Open JTalk WASM) phonemizers switch automatically. Short ambiguous phrases can be forced with [[it]]...[[/it]] or [[ja]]...[[/ja]]. Private Seed-VC reference identities are not included.'
       : browser
         ? 'Generic system voices, NOT Kokoro. This explicitly selected option uses the browser vendor\'s text-to-speech.'
         : 'Advanced Python Kokoro/Whisper gateway: use the original desktop or an institution-provided non-billed endpoint. Private reference recordings never go to this website.';
     $('#speechPrivacy').textContent = ondevice
-      ? 'Kokoro text-to-speech stays on your device. Only public model and style vector files download from Hugging Face. Mic recognition is the browser\'s separate feature and may use its vendor servers; uploaded audio requires Whisper gateway.'
+      ? 'All Kokoro text-to-speech inference runs on your device. Kokoro weights/styles come from Hugging Face; Italian eSpeak and Japanese Open JTalk libraries/dictionary download from a public CDN. Optional microphone recognition may use your browser vendor\'s servers.'
       : browser
         ? 'Browser recognition may send microphone speech to your browser provider. This is not the original Whisper model.'
         : 'Audio goes to your configured advanced Kokoro/Whisper gateway. Private credentials are not embedded into this website.';
@@ -332,4 +337,29 @@ $('#pace').oninput = () => { $('#paceValue').textContent = `${Number($('#pace').
 $('#export').onclick = () => { const url = URL.createObjectURL(new Blob([JSON.stringify(session.report(), null, 2)], { type: 'application/json' })); const link = document.createElement('a'); link.href = url; link.download = `voice-session-${session.id}.json`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); };
 for (const preset of PRESETS) { const button = document.createElement('button'); button.type = 'button'; button.className = 'ghost'; button.textContent = preset.name; button.onclick = () => { $('#speechText').value = preset.text; $('#language').value = preset.language; }; $('#presets').append(button); }
 window.addEventListener('pagehide', () => { session.stop('Page closed'); haltAudio(); browserListenController?.abort(); browserSpeech.abortListening(); mic.stop(true); objectUrls.forEach(url => URL.revokeObjectURL(url)); });
+function backgroundKokoroPreload(){
+  if ($('#speechEngine').value !== 'ondevice') return;
+  const network = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+  if (network?.saveData || /^(slow-2g|2g)$/i.test(network?.effectiveType || '')) {
+    $('#serviceStatus').textContent = 'Data-saving connection: Kokoro will load on the first interaction.';
+    return;
+  }
+  // Start the heavyweight download after first paint; do not autoplay audio.
+  void localKokoro.preload({ languages:['it','ja'] }).catch(e => {
+    if ($('#speechEngine').value === 'ondevice') $('#serviceStatus').textContent='Kokoro preload interrupted: '+e.message;
+  });
+}
+function scheduleKokoroPreload(){
+  const run=()=>backgroundKokoroPreload();
+  if (typeof requestIdleCallback === 'function') requestIdleCallback(run,{ timeout:1400 });
+  else setTimeout(run,180);
+}
+const warmOnGesture=()=> {
+  if ($('#speechEngine').value==='ondevice' && !localKokoro.modelPromise) {
+    void localKokoro.preload({ languages:['it','ja'] }).catch(()=>{});
+  }
+};
+window.addEventListener('pointerdown',warmOnGesture,{ once:true, capture:true });
+window.addEventListener('keydown',warmOnGesture,{ once:true, capture:true });
 setMode(); devices().catch(() => {}); connectSpeech();
+scheduleKokoroPreload();
