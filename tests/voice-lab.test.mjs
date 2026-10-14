@@ -139,3 +139,38 @@ test('typed fallback never masquerades as an STT result', () => {
   assert.equal(s.state, 'idle');
   assert.throws(() => s.humanText('  '), /nonempty turn/);
 });
+
+
+test('Voice Lab parses existing Giulia streaming NDJSON results (including split network chunks)', async () => {
+  const originalFetch=globalThis.fetch, originalStorage=globalThis.localStorage;
+  const encoder=new TextEncoder();
+  const stream=new ReadableStream({
+    start(controller) {
+      controller.enqueue(encoder.encode('{"type":"route","route":"cultural"}\n{"type":"res'));
+      controller.enqueue(encoder.encode('ult","reply":"Ciao da Giulia.","route":"cultural","runId":"live-123"}\n'));
+      controller.close();
+    },
+  });
+  globalThis.localStorage={getItem:()=>JSON.stringify({giulia:{base:'https://lab.example',token:''}})};
+  globalThis.fetch=async()=>new Response(stream,{status:200,headers:{'Content-Type':'application/x-ndjson'}});
+  try {
+    const response=await callAgent('giulia',[{role:'user',content:'Buongiorno'}]);
+    assert.equal(response.reply,'Ciao da Giulia.');
+    assert.equal(response.route,'cultural');
+    assert.equal(response.runId,'live-123');
+  } finally {globalThis.fetch=originalFetch;globalThis.localStorage=originalStorage;}
+});
+test('Voice Lab reports streamed model errors instead of fabricating a spoken reply', async () => {
+  const originalFetch=globalThis.fetch, originalStorage=globalThis.localStorage;
+  globalThis.localStorage={getItem:()=>JSON.stringify({mei:{base:'https://lab.example/api/mei',token:''}})};
+  globalThis.fetch=async()=>new Response('{"type":"error","error":"Provider unavailable"}\n',{headers:{'Content-Type':'application/x-ndjson'}});
+  try { await assert.rejects(callAgent('mei',[{role:'user',content:'こんにちは'}]),/Provider unavailable/); }
+  finally {globalThis.fetch=originalFetch;globalThis.localStorage=originalStorage;}
+});
+test('Voice Lab rejects incomplete streamed agent answers and preserves the transcript',async()=>{
+  const originalFetch=globalThis.fetch, originalStorage=globalThis.localStorage;
+  globalThis.localStorage={getItem:()=>JSON.stringify({giulia:{base:'https://lab.example',token:''}})};
+  globalThis.fetch=async()=>new Response('{"type":"route","route":"business"}\n',{headers:{'Content-Type':'application/x-ndjson'}});
+  try {await assert.rejects(callAgent('giulia',[]),/without a valid final reply/);}
+  finally{globalThis.fetch=originalFetch;globalThis.localStorage=originalStorage;}
+});
