@@ -31,6 +31,7 @@ jobs:
           node --check public/dual-lab/app.js
           node --check public/dual-lab/voice/app.js
           node --check public/dual-lab/voice/browser-speech.js
+          node --check public/dual-lab/voice/browser-kokoro.js
       - name: Validate speech gateway HTTP contract (no models)
         run: python3 voice-service/test_server.py
       - name: Export tracked source for local import verification
