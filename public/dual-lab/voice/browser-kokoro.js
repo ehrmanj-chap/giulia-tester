@@ -5,9 +5,11 @@
  * not Microsoft speechSynthesis or a paid inference endpoint.
  * Private Seed-VC reference-conditioned voices are NOT reproduced by this code.
  *
- * kokoro-js 1.2.1 uses English phonemization only. We select its English
- * phonemizer explicitly, but replace generation's style tensor with the exact
- * weighted public Giulia/Mei starter vectors from config.example.json.
+ * English: Kokoro-JS's bundled phonemizer.
+ * Italian: ephone (eSpeak NG compiled to browser WASM; GPLv3-or-later).
+ * Japanese: Open JTalk through kokoro-js-jp 0.2.0 (WASM + dictionary).
+ * All languages keep the same original public style-vector blends.
+ * The privately reference-conditioned Seed-VC identities are NOT included.
  *
  * Model: https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX
  * Library: https://github.com/hexgrad/kokoro/tree/main/kokoro.js
@@ -15,6 +17,8 @@
 const MODEL_ID = 'onnx-community/Kokoro-82M-v1.0-ONNX';
 const VOICE_BASE = 'https://huggingface.co/' + MODEL_ID + '/resolve/main/voices/';
 const KOKORO_ESM = 'https://cdn.jsdelivr.net/npm/kokoro-js@1.2.1/dist/kokoro.web.js';
+const JAPANESE_ESM = 'https://cdn.jsdelivr.net/npm/kokoro-js-jp@0.2.0/dist/kokoro-jp.web.js';
+const ITALIAN_ESM = 'https://cdn.jsdelivr.net/npm/ephone@1.0.2/ephone.js';
 const STYLE_DIM = 256;
 const SAMPLE_RATE = 24000;
 const MAX_TOKENS = 509;
@@ -39,7 +43,15 @@ export const SEED_PROFILES = Object.freeze({
     styles: Object.freeze([{ name: 'jf_alpha', weight: .60 }, { name: 'jf_nezumi', weight: .40 }]),
   }),
 });
-export const BROWSER_KOKORO_LANGUAGES = Object.freeze(['en-us', 'en-gb']);
+export const BROWSER_KOKORO_LANGUAGES = Object.freeze(['en-us', 'en-gb', 'it', 'ja']);
+export function normalizeItalianIPA(ipa) {
+  if (typeof ipa !== 'string' || !ipa.trim()) throw Error('Italian phonemizer returned no IPA.');
+  // Align eSpeak output with Misaki's multilingual Kokoro phoneme conventions.
+  return ipa.trim().replace(/[\u200c\u200d]/gu,'')
+    .replace(/d[\u0361\^]ʒ/gu,'ʤ').replace(/t[\u0361\^]ʃ/gu,'ʧ')
+    .replace(/d[\u0361\^]z/gu,'ʣ').replace(/t[\u0361\^]s/gu,'ʦ')
+    .replace(/\^/gu,'').replace(/\s+/gu,' ');
+}
 const abortError = () => new DOMException('Kokoro generation canceled.', 'AbortError');
 const requireActive = signal => { if (signal?.aborted) throw abortError(); };
 
@@ -96,10 +108,15 @@ export function encodePcm16Wav(samples, sampleRate = SAMPLE_RATE) {
 }
 
 export class OnDeviceKokoro {
-  constructor({ onStatus = () => {}, loader = null, fetchImpl = null } = {}) {
+  constructor({ onStatus = () => {}, loader = null, japaneseLoader = null, italianLoader = null, fetchImpl = null } = {}) {
     this.kind = 'ondevice';
     this.onStatus = onStatus;
     this.loader = loader || (() => import(KOKORO_ESM));
+    this.japaneseLoader = japaneseLoader || (() => import(JAPANESE_ESM));
+    this.italianLoader = italianLoader || (() => import(ITALIAN_ESM));
+    this.japanesePromise = null;
+    this.italianPromise = null;
+    this.preloadPromise = null;
     this.fetchImpl = fetchImpl || ((...args) => fetch(...args));
     this.voiceCache = new Map();
     this.queue = Promise.resolve();
@@ -113,6 +130,7 @@ export class OnDeviceKokoro {
         backend: 'kokoro-on-device',
         available: true, controls: ['pace'], languages: [...BROWSER_KOKORO_LANGUAGES],
         modelId: MODEL_ID, firstRunDownloadsModel: true,
+        phonemizers: { 'en-us':'Kokoro-JS', 'en-gb':'Kokoro-JS', 'it':'ephone WASM', 'ja':'Open JTalk WASM' },
         referenceConversion: false, streaming: false,
       },
       stt: { available: false, backend: 'none' },
@@ -145,6 +163,63 @@ export class OnDeviceKokoro {
     }
     return this.modelPromise;
   }
+  async getItalian() {
+    if (!this.italianPromise) {
+      this.italianPromise = (async () => {
+        this.onStatus('Loading Italian eSpeak phonemizer locally…');
+        const library = await this.italianLoader();
+        const createEphone = library.default || library.createEphone;
+        if (typeof createEphone !== 'function' || !library.roa) throw Error('The Italian WASM phonemizer did not expose the expected ephone API.');
+        const engine = await createEphone(library.roa);
+        if (typeof engine.setVoice !== 'function' || typeof engine.textToIpa !== 'function') throw Error('Italian G2P engine is incomplete.');
+        engine.setVoice('it');
+        this.onStatus('Italian phonemizer ready on device.');
+        return engine;
+      })().catch(error => { this.italianPromise = null; throw error; });
+    }
+    return this.italianPromise;
+  }
+  async getJapanese() {
+    if (!this.japanesePromise) {
+      this.japanesePromise = (async () => {
+        this.onStatus('Loading Japanese Open JTalk phonemizer locally…');
+        const [library, model] = await Promise.all([this.japaneseLoader(), this.getModel()]);
+        const Constructor = library.KokoroJP;
+        if (typeof Constructor !== 'function') throw Error('Japanese browser G2P library is unavailable.');
+        // kokoro-js-jp@0.2.0's TypeScript-private constructor accepts an
+        // existing KokoroTTS runtime. This avoids downloading a second 82M
+        // parameter model. Pinned to the audited version; fail closed if changed.
+        const adapter = new Constructor(model, {});
+        if (typeof adapter.speak !== 'function') throw Error('Japanese G2P adapter cannot synthesize.');
+        return adapter;
+      })().catch(error => { this.japanesePromise = null; throw error; });
+    }
+    return this.japanesePromise;
+  }
+  preload({ languages = ['it','ja'] } = {}) {
+    if (this.preloadPromise) return this.preloadPromise;
+    this.preloadPromise = (async () => {
+      await this.getModel(); // download ONNX when the page is first opened, not first speech
+      await Promise.all(Object.values(SEED_PROFILES).flatMap(p=>p.styles.map(s=>this.getStyle(s.name))));
+      const results=await Promise.allSettled([
+        ...(languages.includes('it') ? [this.getItalian()] : []),
+        ...(languages.includes('ja') ? [this.getJapanese().then(async jp=>{
+          // Prime Open JTalk dictionary while idle; no output is played.
+          // The compiled TypeScript-private method is exposed in pinned 0.2.0.
+          if (typeof jp.loadJapaneseG2POnce === 'function') await jp.loadJapaneseG2POnce();
+          else throw Error('Japanese warmup API changed; check pinned kokoro-js-jp version.');
+        })] : []),
+      ]);
+      const failed=results.filter(r=>r.status==='rejected');
+      if (failed.length) {
+        this.onStatus('Kokoro model ready · some language phonemizers need retry on first use.');
+      }else{
+        this.onStatus('Kokoro + selected phonemizers ready · no paid cloud inference.');
+      }
+      return { modelReady:true, languagesReady: results.length-failed.length, languagesFailed:failed.length };
+    })().catch(error => {this.preloadPromise=null; throw error;});
+    return this.preloadPromise;
+  }
   async getStyle(name) {
     if (!/^(?:if_sara|af_heart|jf_alpha|jf_nezumi)$/.test(name)) throw Error('Unapproved style source.');
     if (!this.voiceCache.has(name)) {
@@ -174,7 +249,7 @@ export class OnDeviceKokoro {
     const profile = SEED_PROFILES[voice];
     if (!profile) throw Error('Select a verified Giulia or Mei Kokoro seed voice.');
     if (!BROWSER_KOKORO_LANGUAGES.includes(language)) {
-      throw Error('Browser Kokoro currently phonemizes English only. Italian/Japanese pronunciation and Seed-VC references still need their original Python runtime.');
+      throw Error('Unsupported Kokoro speech language. Choose English, Italian or Japanese.');
     }
     const speed = Number(speech?.pace ?? 1);
     if (!Number.isFinite(speed) || speed < .6 || speed > 1.5) throw Error('Invalid speech pace.');
@@ -184,9 +259,9 @@ export class OnDeviceKokoro {
     const styleVectors = await Promise.all(names.map(async name => [name, await this.getStyle(name)]));
     requireActive(signal);
     const byName = new Map(styleVectors);
-    // The Kokoro JS G2P currently handles English. Keep its public
-    // tokenizer/G2P, but replace the style tensor with the original
-    // weighted 256-dimensional Kokoro vectors for Giulia or Mei.
+    // Keep one ONNX model and one identity-specific style interpolation;
+    // only the grapheme-to-phoneme front-end changes for English, Italian,
+    // and Japanese. No voice cloning and no server inference.
     // input_ids.constructor is the Tensor from the *same* Transformers.js
     // instance, avoiding incompatible copies of ONNX Runtime's Tensor.
     const originalGenerate = model.generate_from_ids;
@@ -203,7 +278,21 @@ export class OnDeviceKokoro {
     };
     const started = performance.now();
     try {
-      const audio = await model.generate(text, { voice: language === 'en-gb' ? 'bf_emma' : 'af_heart', speed });
+      let audio;
+      if(language === 'it'){
+        const it = await this.getItalian();
+        requireActive(signal);
+        const phonemes = normalizeItalianIPA(it.textToIpa(text));
+        if(!phonemes.trim()) throw Error('Italian G2P produced empty phonemes.');
+        const { input_ids } = model.tokenizer(phonemes, {truncation:true});
+        audio = await model.generate_from_ids(input_ids, { voice:'af_heart',speed });
+      } else if(language === 'ja'){
+        const jp = await this.getJapanese();
+        requireActive(signal);
+        audio = await jp.speak(text, 'jf_alpha', speed); // G2P source voice; patched output uses the blended identity.
+      } else {
+        audio = await model.generate(text, { voice: language === 'en-gb' ? 'bf_emma' : 'af_heart', speed });
+      }
       requireActive(signal);
       if (!audio?.data) throw Error('Kokoro produced no PCM samples.');
       const blob = encodePcm16Wav(audio.data, SAMPLE_RATE);
