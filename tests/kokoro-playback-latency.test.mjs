@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import { OnDeviceKokoro } from '../public/dual-lab/voice/browser-kokoro.js';
 import { groupSpeechSegments, playKokoroSpeech } from '../public/dual-lab/voice/speech-buffer.js';
 
@@ -142,4 +143,16 @@ test('aborted speech never starts another expensive inference',async()=>{
     voice:'mei-blend',signal:controller.signal,play:async()=>{},
   }),x=>x.name==='AbortError');
   assert.equal(calls,0);
+});
+
+test('both production lab entrypoints use one Kokoro prebuffer/fusion scheduler, not blocking serial loops',()=>{
+  const dual=fs.readFileSync(new URL('../public/dual-lab/app.js',import.meta.url),'utf8');
+  const audio=fs.readFileSync(new URL('../public/dual-lab/voice/app.js',import.meta.url),'utf8');
+  assert.match(dual,/import \{ playKokoroSpeech \} from '\.\/voice\/speech-buffer\.js'/);
+  assert.match(audio,/import \{ playKokoroSpeech \} from '\.\/speech-buffer\.js'/);
+  assert.match(dual,/onDeviceReadout.*\n[\s\S]*playKokoroSpeech/);
+  assert.match(audio,/playKokoroSpeech\(\{/);
+  assert.match(dual,/phonemizationMs/);
+  assert.match(dual,/inferenceMs/);
+  assert.match(audio,/betweenClipsGapMs/);
 });
