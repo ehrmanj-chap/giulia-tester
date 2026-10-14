@@ -57,7 +57,7 @@ function render() {
       header.append(document.createTextNode(AGENTS[turn.participant]?.name || 'You'));
       const text = document.createElement('p'); text.textContent = turn.text;
       const meta = document.createElement('div'); meta.className = 'turn-meta';
-      meta.textContent = [turn.voiceLabel, turn.audioStatus, ...Object.entries(turn.timings).filter(([, v]) => Number.isFinite(v)).map(([k, v]) => `${k.replace(/Ms$/, '')}: ${(v / 1000).toFixed(2)}s`), ...turn.errors.map(e => `${e.stage}: ${e.message}`)].filter(Boolean).join(' · ');
+      meta.textContent = [turn.voiceLabel, turn.detectedLanguages?.length ? 'G2P: ' + turn.detectedLanguages.join(' → ') : null, turn.audioStatus, ...Object.entries(turn.timings).filter(([, v]) => Number.isFinite(v)).map(([k, v]) => `${k.replace(/Ms$/, '')}: ${(v / 1000).toFixed(2)}s`), ...turn.errors.map(e => `${e.stage}: ${e.message}`)].filter(Boolean).join(' · ');
       article.append(header, text, meta);
       if (turn.audio?.length) {
         const actions = document.createElement('div'); actions.className = 'clip-actions';
