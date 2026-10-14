@@ -8,9 +8,6 @@ on:
       - 'tests/**'
       - 'public/dual-lab/**'
       - 'voice-service/**'
-      - 'cloud_voice/**'
-      - 'api/voice/**'
-      - 'lib/voice-cloud-proxy.mjs'
       - 'server.mjs'
       - 'scripts/import-mei-corpus.py'
       - '.github/workflows/mei-corpus-ci.yml'
@@ -34,15 +31,9 @@ jobs:
           node --check public/dual-lab/app.js
           node --check public/dual-lab/voice/app.js
           node --check public/dual-lab/voice/browser-speech.js
+          node --check public/dual-lab/voice/browser-kokoro.js
       - name: Validate speech gateway HTTP contract (no models)
         run: python3 voice-service/test_server.py
-      - name: Validate Modal server and Vercel voice endpoints (no credentials)
-        run: |
-          python3 -m py_compile cloud_voice/modal_app.py
-          node --check lib/voice-cloud-proxy.mjs
-          node --check api/voice/v1/status.js
-          node --check api/voice/v1/tts.js
-          node --check api/voice/v1/stt.js
       - name: Export tracked source for local import verification
         if: matrix.node == '24'
         run: git archive --format=tar.gz --output=/tmp/mei-base-source.tar.gz HEAD

@@ -2,6 +2,7 @@ import { defaultBackendFor, loadConnections, saveConnections, endpointUrl } from
 import { BrowserSpeech, hasBrowserSpeech } from './voice/browser-speech.js';
 import { VoiceGateway } from './voice/clients.js';
 import { AudioPlayer } from './voice/audio.js';
+import { OnDeviceKokoro } from './voice/browser-kokoro.js';
 import { speechSegments } from './voice/core.js';
 const $ = s => document.querySelector(s);
 const AGENTS = {
@@ -11,6 +12,11 @@ const AGENTS = {
 let selectedAgent='giulia', connections=loadConnections();
 const histories={giulia:[],mei:[]}, pending={giulia:false,mei:false}, thinkingRoutes={giulia:null,mei:null}, health={giulia:null,mei:null}, checkIds={giulia:0,mei:0}, runDiagnostics={giulia:null,mei:null}, drafts={giulia:'',mei:''};
 const readout=new BrowserSpeech(), readoutPlayer=new AudioPlayer();
+const onDeviceReadout=new OnDeviceKokoro({
+  onStatus: message => {
+    if ($('#readoutEngine').value === 'ondevice') $('#readoutStatus').textContent = message;
+  },
+});
 let readoutEpoch=0,readoutController=null,readoutGateway=null;
 function stopReadout(){
   readoutEpoch++;readoutController?.abort();readout.stop();readoutPlayer.stop();
@@ -18,26 +24,29 @@ function stopReadout(){
 }
 async function playReadout(text, agent){
   readoutEpoch++;readoutController?.abort();readout.stop();readoutPlayer.stop();
-  const epoch=readoutEpoch, useGateway=$('#preferGatewayReadout').checked;
-  if(useGateway&&!readoutGateway){
-    $('#readoutStatus').textContent='Kokoro not connected · no generic Microsoft voice substitution';
-    $('#readoutGatewayStatus').textContent='Connect the original Kokoro/Seed-VC service using a local or HTTPS endpoint.';
+  const mode=$('#readoutEngine').value, epoch=readoutEpoch;
+  if(mode==='gateway'&&!readoutGateway){
+    $('#readoutStatus').textContent='Original Kokoro gateway not connected; no Microsoft voice substitution.';
     $('.readout-advanced').open=true;return;
   }
-  if(!useGateway&&!hasBrowserSpeech()){ $('#readoutStatus').textContent='Browser speech unavailable. Connect experimental TTS instead.';return; }
+  if(mode==='browser'&&!hasBrowserSpeech()){
+    $('#readoutStatus').textContent='Generic browser speech is unavailable; choose Kokoro on-device.';return;
+  }
   const controller=new AbortController();readoutController=controller;
-  $('#readoutStatus').textContent='Reading '+AGENTS[agent].name+(useGateway?' · experimental voice':' · browser voice')+'…';
+  $('#readoutStatus').textContent='Reading '+AGENTS[agent].name+' · '
+    + (mode==='ondevice'?'Kokoro in this browser':mode==='gateway'?'original Python Kokoro':'generic system voice')+'…';
   try {
     const language=$('#readoutLanguage').value;
-    const voice=$('#'+agent+'ReadoutVoice').value;
-    if(useGateway&&!voice)throw Error('The speech gateway does not have a configured '+AGENTS[agent].name+' voice.');
+    const voice=mode==='gateway'?$('#'+agent+'ReadoutVoice').value:agent+'-blend';
+    if(mode==='gateway'&&!voice)throw Error('Missing configured '+AGENTS[agent].name+' gateway voice.');
     for(const chunk of speechSegments(text,language)){
       if(controller.signal.aborted)break;
-      if(useGateway){
-        const clip=await readoutGateway.synthesize({text:chunk.text,language:chunk.language,voice,speech:{pace:1}},{signal:controller.signal});
-        await readoutPlayer.play(clip.blob,{signal:controller.signal});
-      }else{
+      if(mode==='browser'){
         await readout.speak({text:chunk.text,language:chunk.language,voice:'browser:default',speech:{pace:1}},{signal:controller.signal});
+      }else{
+        const provider=mode==='ondevice'?onDeviceReadout:readoutGateway;
+        const clip=await provider.synthesize({text:chunk.text,language:chunk.language,voice,speech:{pace:1}},{signal:controller.signal});
+        await readoutPlayer.play(clip.blob,{signal:controller.signal});
       }
     }
     if(epoch===readoutEpoch)$('#readoutStatus').textContent='Finished reading';
@@ -144,18 +153,19 @@ $('#readoutLanguage').addEventListener('change',stopReadout);
 const hostedReadout=location.protocol==='https:'&&!['localhost','127.0.0.1'].includes(location.hostname);
 try{
   const previous=localStorage.getItem('voiceLab.gateway');
-  if(hostedReadout)$('#readoutGatewayUrl').value=location.origin+'/api/voice';
-  else if(previous)$('#readoutGatewayUrl').value=previous;
-}catch{if(hostedReadout)$('#readoutGatewayUrl').value=location.origin+'/api/voice';}
-$('#readoutGatewayUrl').placeholder=hostedReadout?'Cloud Kokoro is served at /api/voice':'https://your-kokoro-voice-gateway.example';
-$('#preferGatewayReadout').addEventListener('change',()=>{
+  if(previous)$('#readoutGatewayUrl').value=previous;
+  else if(hostedReadout)$('#readoutGatewayUrl').value='';
+}catch{if(hostedReadout)$('#readoutGatewayUrl').value='';}
+$('#readoutGatewayUrl').placeholder='https://your-kokoro-voice-gateway.example';
+$('#readoutEngine').addEventListener('change',()=>{
   stopReadout();
-  if($('#preferGatewayReadout').checked&&!readoutGateway){
-    $('#readoutGatewayStatus').textContent='Kokoro selected but not connected. No generic voices will play until the original gateway is connected.';
-    $('.readout-advanced').open=true;
-  }else if(!$('#preferGatewayReadout').checked){
-    $('#readoutGatewayStatus').textContent='Generic device voices enabled by choice. These are not the Kokoro/Seed-VC research voices.';
-  }
+  const mode=$('#readoutEngine').value;
+  $('#readoutStatus').textContent=mode==='ondevice'
+    ? 'Kokoro seed blends · first use downloads the model · no server inference cost'
+    : mode==='gateway'
+      ? 'Original Python gateway selected · connect it under advanced controls'
+      : 'Generic system voices enabled explicitly · NOT Kokoro';
+  if(mode==='gateway'&&!readoutGateway)$('.readout-advanced').open=true;
 });
 $('#connectReadoutGateway').addEventListener('click',async()=>{
   stopReadout();
@@ -175,7 +185,7 @@ $('#connectReadoutGateway').addEventListener('click',async()=>{
         ||agentVoices.find(v=>v.default)?.id||agentVoices[0].id;
     }
     readoutGateway=candidate;
-    $('#preferGatewayReadout').checked=true;
+    $('#readoutEngine').value='gateway';
     $('#readoutGatewayStatus').textContent='Original Kokoro gateway connected · '+status.voices.length+' configured voices. Giulia and Mei will use their own voices.';
   }catch(failure){
     readoutGateway=null; // Keep custom voices selected: never revert silently to device TTS.
