@@ -2,11 +2,17 @@ import { AGENTS, VoiceSession, speechSegments, speechSpec } from './core.js';
 import { VoiceGateway, callAgent } from './clients.js';
 import { AudioPlayer, Microphone } from './audio.js';
 import { BrowserSpeech, hasBrowserRecognition } from './browser-speech.js';
+import { OnDeviceKokoro } from './browser-kokoro.js';
 import { PRESETS } from './presets.js';
 const $ = selector => document.querySelector(selector);
 const player = new AudioPlayer();
 let gateway, capabilities, session, loopRunning = false, lastClip, ttsController, uiEpoch = 0, ttsBusy = false;
 const browserSpeech = new BrowserSpeech();
+const localKokoro = new OnDeviceKokoro({
+  onStatus: message => {
+    if ($('#speechEngine').value === 'ondevice') $('#serviceStatus').textContent = message;
+  },
+});
 let browserListening = false, browserListenController = null;
 const objectUrls = new Set();
 const hints = { tts: 'Try a phrase, compare voices, and listen for timing and pronunciation.', stt: 'Record or upload speech. Review the original transcript and recognition time.', 'human-ai': 'Speak to one expert. Their normal text pipeline provides every response.', 'ai-ai': 'Giulia and Mei exchange exact text. Speech is rendered for you to hear.', 'ai-ai-human': 'Join, interrupt, or redirect the discussion. A direct question to you pauses the agents.' };
@@ -22,7 +28,7 @@ function options() { return { mode: $('#mode').value, agent: $('#agent').value, 
   maxTurns: Number($('#maxTurns').value), topic: $('#topic').value, scenario: $('#scenario').value, objective: $('#objective').value, opening: $('#opening').value }; }
 function makeSession() {
   return new VoiceSession({ options: options(), model: callAgent, renderSpeech, onChange: render,
-    transcribe: (blob, params) => { if (!gateway || gateway.kind === 'browser') throw Error('Audio file transcription needs a connected Whisper voice gateway.'); return gateway.transcribe(blob, params); } });
+    transcribe: (blob, params) => { if (!gateway || gateway.kind === 'browser' || gateway.kind === 'ondevice') throw Error('Audio file transcription needs a connected Whisper gateway.'); return gateway.transcribe(blob, params); } });
 }
 function setMode() {
   const mode = $('#mode').value;
@@ -186,15 +192,16 @@ async function connectSpeech() {
   }
   error(); $('#serviceStatus').textContent = 'Connecting speech engine…';
   try {
-    const candidate = $('#speechEngine').value === 'browser'
-      ? browserSpeech : new VoiceGateway($('#gatewayUrl').value, $('#gatewayToken').value);
+    const candidate = $('#speechEngine').value === 'ondevice'
+      ? localKokoro : $('#speechEngine').value === 'browser'
+        ? browserSpeech : new VoiceGateway($('#gatewayUrl').value, $('#gatewayToken').value);
     const status = await candidate.status();
     if (status.schemaVersion !== 1 || !Array.isArray(status.voices)) throw Error('Unsupported speech engine contract.');
     if (candidate.kind !== 'browser' && !/kokoro|seed-?vc/i.test(status.tts?.backend || '')) {
       throw Error('The connected server does not identify as the original Kokoro/Seed-VC speech gateway.');
     }
     gateway = candidate; capabilities = status;
-    if (candidate.kind !== 'browser') {
+    if (candidate.kind !== 'browser' && candidate.kind !== 'ondevice') {
       try { localStorage.setItem('voiceLab.gateway', candidate.base); } catch {}
     }
     for (const agent of ['giulia', 'mei']) {
@@ -209,24 +216,35 @@ async function connectSpeech() {
     }
     $('#compareVoice').replaceChildren(new Option('No comparison', ''));
     status.voices.forEach(v => $('#compareVoice').add(new Option(v.label, v.id)));
-    const browser = candidate.kind === 'browser';
-    $('#upload').disabled = browser;
-    $('#handsFree').disabled = browser;
-    if (browser) $('#handsFree').checked = false;
-    $('#retry').disabled = browser || !lastClip;
-    $('#serviceStatus').textContent = browser
-      ? 'GENERIC DEVICE VOICES · Not Giulia/Mei Kokoro · ' + (status.stt?.available ? 'browser microphone recognition available' : 'type your turns')
-      : 'Kokoro/Seed-VC gateway connected · ' + status.voices.length + ' configured voices · ' + (status.stt?.available ? 'Whisper ready' : 'STT unavailable');
-    $('#speechPrivacy').textContent = browser
-      ? 'Browser recognition may send microphone speech to your browser provider. Recordings are not uploaded to this site. Browser synthesis cannot export audio files.'
-      : 'Audio clips are sent to your configured Whisper/Kokoro gateway. Private references, model weights and tokens are not embedded in this website.';
+    const browser = candidate.kind === 'browser', ondevice = candidate.kind === 'ondevice';
+    $('#upload').disabled = browser || ondevice;
+    $('#handsFree').disabled = browser || ondevice;
+    if (browser || ondevice) $('#handsFree').checked = false;
+    $('#retry').disabled = browser || ondevice || !lastClip;
+    $('#serviceStatus').textContent = ondevice
+      ? 'Kokoro seed voice blends ready to download on first speech · all TTS inference stays in this browser'
+      : browser
+        ? 'GENERIC DEVICE VOICES · Not Giulia/Mei Kokoro · ' + (status.stt?.available ? 'browser microphone recognition available' : 'type your turns')
+        : 'Original Kokoro gateway connected · ' + status.voices.length + ' voices · ' + (status.stt?.available ? 'Whisper ready' : 'STT unavailable');
+    $('#engineDetail').textContent = ondevice
+      ? 'Kokoro ONNX q8 (~90 MB) is downloaded and cached locally when you generate speech. Giulia and Mei use the checked-in seed style blends, NOT the private Seed-VC reference variants. Browser phonemization is English-only here. The model and reference styles come from public Hugging Face assets.'
+      : browser
+        ? 'Generic system voices, NOT Kokoro. This explicitly selected option uses the browser vendor\'s text-to-speech.'
+        : 'Advanced Python Kokoro/Whisper gateway: use the original desktop or an institution-provided non-billed endpoint. Private reference recordings never go to this website.';
+    $('#speechPrivacy').textContent = ondevice
+      ? 'Kokoro text-to-speech stays on your device. Only public model and style vector files download from Hugging Face. Mic recognition is the browser\'s separate feature and may use its vendor servers; uploaded audio requires Whisper gateway.'
+      : browser
+        ? 'Browser recognition may send microphone speech to your browser provider. This is not the original Whisper model.'
+        : 'Audio goes to your configured advanced Kokoro/Whisper gateway. Private credentials are not embedded into this website.';
     render();
   } catch (failure) {
     gateway = null; capabilities = null;
     error(failure.message);
-    $('#serviceStatus').textContent = $('#speechEngine').value === 'gateway'
-      ? 'Original Kokoro voices unavailable · no device-voice substitution'
-      : 'Generic device speech unavailable · canonical text preserved';
+    $('#serviceStatus').textContent = $('#speechEngine').value === 'ondevice'
+      ? 'Kokoro browser runtime unavailable · no Microsoft substitution'
+      : $('#speechEngine').value === 'gateway'
+        ? 'Original Kokoro gateway unavailable · no generic voice substitution'
+        : 'Generic device speech unavailable · canonical text preserved';
     if ($('#speechEngine').value === 'gateway') $('#connectionSettings').open = true;
     render();
   }
@@ -255,7 +273,7 @@ $('#generate').onclick = async () => {
   finally { if (epoch === uiEpoch) { ttsBusy = false; render(); } }
 };
 $('#record').onclick = async () => {
-  if (gateway?.kind === 'browser') {
+  if (gateway?.kind === 'browser' || gateway?.kind === 'ondevice') {
     if (browserListening) { browserSpeech.stopListening(); return; }
     if (!hasBrowserRecognition()) { error('Browser recognition is unavailable. Type a turn or select the Whisper gateway.'); return; }
     if (session.state === 'stopped') { error('Reset the session before recording again.'); return; }
@@ -288,13 +306,13 @@ $('#record').onclick = async () => {
 $('#upload').onchange = e => {
   const file = e.target.files[0];
   if (!file) return;
-  if (!gateway || gateway.kind === 'browser') {
-    error('Uploaded-audio transcription needs the advanced Whisper gateway. Browser recognition only supports live microphone input.');
+  if (!gateway || gateway.kind === 'browser' || gateway.kind === 'ondevice') {
+    error('Uploaded-audio transcription needs the original Whisper gateway. Browser mode supports live recognition or typed input only.');
     e.target.value = ''; return;
   }
   haltAudio(); acceptClip(file);
 };
-$('#retry').onclick = () => { if (lastClip && gateway?.kind !== 'browser') { haltAudio(); acceptClip(lastClip); } };
+$('#retry').onclick = () => { if (lastClip && gateway && !['browser','ondevice'].includes(gateway.kind)) { haltAudio(); acceptClip(lastClip); } };
 $('#sendTyped').onclick = () => {
   const text = $('#typedTurn').value.trim();
   if (!text) { error('Type a turn first.'); return; }
