@@ -144,10 +144,10 @@ $('#readoutLanguage').addEventListener('change',stopReadout);
 const hostedReadout=location.protocol==='https:'&&!['localhost','127.0.0.1'].includes(location.hostname);
 try{
   const previous=localStorage.getItem('voiceLab.gateway');
-  if(hostedReadout)$('#readoutGatewayUrl').value=location.origin+'/api/voice';
-  else if(previous)$('#readoutGatewayUrl').value=previous;
-}catch{if(hostedReadout)$('#readoutGatewayUrl').value=location.origin+'/api/voice';}
-$('#readoutGatewayUrl').placeholder=hostedReadout?'Cloud Kokoro is served at /api/voice':'https://your-kokoro-voice-gateway.example';
+  if(previous)$('#readoutGatewayUrl').value=previous;
+  else if(hostedReadout)$('#readoutGatewayUrl').value='';
+}catch{if(hostedReadout)$('#readoutGatewayUrl').value='';}
+$('#readoutGatewayUrl').placeholder='https://your-kokoro-voice-gateway.example';
 $('#preferGatewayReadout').addEventListener('change',()=>{
   stopReadout();
   if($('#preferGatewayReadout').checked&&!readoutGateway){

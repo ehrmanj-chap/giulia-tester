@@ -14,9 +14,9 @@ const hints = { tts: 'Try a phrase, compare voices, and listen for timing and pr
 const hostedPreview = location.protocol === 'https:' && !['localhost', '127.0.0.1'].includes(location.hostname);
 try {
   const saved = localStorage.getItem('voiceLab.gateway');
-  if (hostedPreview) $('#gatewayUrl').value = location.origin + '/api/voice';
-  else if (saved) $('#gatewayUrl').value = saved;
-} catch { if (hostedPreview) $('#gatewayUrl').value = location.origin + '/api/voice'; }
+  if (saved) $('#gatewayUrl').value = saved;
+  else if (hostedPreview) $('#gatewayUrl').value = '';
+} catch { if (hostedPreview) $('#gatewayUrl').value = ''; }
 function error(message = '') { $('#error').hidden = !message; $('#error').textContent = message; }
 function options() { return { mode: $('#mode').value, agent: $('#agent').value, startingSpeaker: $('#startingSpeaker').value,
   maxTurns: Number($('#maxTurns').value), topic: $('#topic').value, scenario: $('#scenario').value, objective: $('#objective').value, opening: $('#opening').value }; }
@@ -179,12 +179,6 @@ async function devices() {
   $('#speaker').disabled = !('setSinkId' in HTMLMediaElement.prototype);
 }
 async function connectSpeech() {
-  const cloudEndpoint = hostedPreview && $('#gatewayUrl').value === location.origin + '/api/voice';
-  if (cloudEndpoint && !$('#gatewayToken').value.trim()) {
-    gateway = null;capabilities=null;error();
-    $('#serviceStatus').textContent='Cloud Kokoro selected · enter the lab demo access token, then Connect / refresh.';
-    $('#connectionSettings').open=true;render();return;
-  }
   if ($('#speechEngine').value === 'gateway' && !$('#gatewayUrl').value.trim()) {
     gateway = null; capabilities = null; error();
     $('#serviceStatus').textContent = 'Custom Kokoro voices not connected · Vercel only hosts this interface. Add an HTTPS gateway URL below.';

@@ -170,13 +170,7 @@ class SpeechEngine:
         if self.whisper is None:
             from transformers import pipeline
             torch.set_num_threads(int(self.config.get("cpuThreads", 4)))
-            use_gpu = bool(self.config.get("useGpuForWhisper", False)) and torch.cuda.is_available()
-            self.whisper = pipeline(
-                "automatic-speech-recognition",
-                model=self.config["whisperModel"],
-                device=0 if use_gpu else -1,
-                torch_dtype=torch.float16 if use_gpu else torch.float32,
-            )
+            self.whisper = pipeline("automatic-speech-recognition", model=self.config["whisperModel"], device=-1, torch_dtype=torch.float32)
         options = {"task": "transcribe"}
         if language != "auto":
             options["language"] = {"en": "english", "it": "italian", "ja": "japanese"}[language]
