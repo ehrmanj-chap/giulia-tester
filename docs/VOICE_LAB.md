@@ -4,7 +4,12 @@
 > Kokoro q8 synthesis with the public Giulia/Mei seed style-vector blends.
 > No Modal, paid compute, Vercel speech inference function, or desktop
 > gateway is needed for that path. The legacy advanced Python gateway
-> remains *optional*. See [Zero-cost Kokoro](ZERO_COST_KOKORO.md).
+> remains *optional*. The Kokoro model is preloaded on **both** Dual Lab
+> and Audio Lab page opens. Italian uses eSpeak/WASM, Japanese uses
+> Open JTalk/WASM, and a conservative local language detector switches the
+> phonemizer within mixed English/Italian/Japanese responses.
+> Explicit [[it]]...[[/it]] / [[ja]]...[[/ja]] override ambiguity.
+> See [Zero-cost Kokoro](ZERO_COST_KOKORO.md).
 > The earlier notes below describe the experimental local deployment
 > and the older browser-speech fallback, not the current default.
 
