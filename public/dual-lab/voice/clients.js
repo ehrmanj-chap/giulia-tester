@@ -27,7 +27,7 @@ export async function callAgent(agent, messages, { signal } = {}) {
       while (true) {
         const { value, done } = await reader.read();
         buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
-        const lines = buffer.split('\\n'); buffer = lines.pop() || '';
+        const lines = buffer.split('\n'); buffer = lines.pop() || '';
         for (const line of lines) handle(line);
         if (done) break;
       }
