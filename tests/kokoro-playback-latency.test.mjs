@@ -177,7 +177,7 @@ test('fused synthesis rejects a waveform that only speaks its first word', async
     italianLoader:async()=>({roa:{},default:async()=>({setVoice(){},textToIpa:()=> 'bwɔnˈdʒorno'})}),
     japaneseLoader:async()=>({KokoroJP:class{
       constructor(tts){this.tts=tts;}
-      async speak(){return this.tts.generate_from_ids(this.tts.tokenizer('kon'nichiwa').input_ids);}
+      async speak(){return this.tts.generate_from_ids(this.tts.tokenizer('konnichiwa').input_ids);}
     }}),
     fetchImpl:async()=>new Response(new Float32Array(510*256).fill(2).buffer),
   });
