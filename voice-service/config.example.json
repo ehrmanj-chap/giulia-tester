@@ -1,0 +1,11 @@
+{
+  "kokoroModel": "../.voice-local/kokoro-v1.0.onnx",
+  "kokoroVoices": "../.voice-local/voices-v1.0.bin",
+  "whisperModel": "../.voice-local/whisper-small",
+  "cpuThreads": 4,
+  "allowedOrigins": ["http://127.0.0.1:8787", "http://localhost:8787"],
+  "voices": [
+    {"id": "giulia-blend", "label": "Giulia · synthetic blend", "agent": "giulia", "default": true, "backend": "kokoro-onnx", "styles": [{"name": "if_sara", "weight": 0.65}, {"name": "af_heart", "weight": 0.35}]},
+    {"id": "mei-blend", "label": "Mei · synthetic blend", "agent": "mei", "default": true, "backend": "kokoro-onnx", "styles": [{"name": "jf_alpha", "weight": 0.6}, {"name": "jf_nezumi", "weight": 0.4}]}
+  ]
+}

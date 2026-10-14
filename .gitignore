@@ -5,3 +5,10 @@ eval-results/*.json
 node_modules/
 .DS_Store
 Thumbs.db
+
+# Private desktop speech artifacts, reference voices, and downloaded model weights
+.voice-local/
+voice-service/.venv/
+voice-service/*.local.json
+voice-service/__pycache__/
+*.pyc
