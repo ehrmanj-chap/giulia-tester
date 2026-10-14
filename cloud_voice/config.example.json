@@ -1,0 +1,32 @@
+{
+  "_note": "EXAMPLE ONLY. Do not substitute this for the existing private trained/conditioned voice profiles. Move the exact originals into your private Modal Volume and adjust paths there.",
+  "kokoroModel": "./models/kokoro-v1.0.onnx",
+  "kokoroVoices": "./models/voices-v1.0.bin",
+  "whisperModel": "./models/whisper-small",
+  "cpuThreads": 4,
+  "useGpuForWhisper": true,
+  "voices": [
+    {
+      "id": "giulia-blend",
+      "label": "Giulia · original synthetic style blend",
+      "agent": "giulia",
+      "default": true,
+      "backend": "kokoro-onnx",
+      "styles": [
+        { "name": "if_sara", "weight": 0.65 },
+        { "name": "af_heart", "weight": 0.35 }
+      ]
+    },
+    {
+      "id": "mei-blend",
+      "label": "Mei · original synthetic style blend",
+      "agent": "mei",
+      "default": true,
+      "backend": "kokoro-onnx",
+      "styles": [
+        { "name": "jf_alpha", "weight": 0.6 },
+        { "name": "jf_nezumi", "weight": 0.4 }
+      ]
+    }
+  ]
+}
