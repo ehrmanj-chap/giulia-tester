@@ -1,5 +1,14 @@
 # Voice Lab
 
+> **CURRENT NO-PAYMENT CONFIGURATION:** Audio Lab defaults to browser-native
+> Kokoro q8 synthesis with the public Giulia/Mei seed style-vector blends.
+> No Modal, paid compute, Vercel speech inference function, or desktop
+> gateway is needed for that path. The legacy advanced Python gateway
+> remains *optional*. See [Zero-cost Kokoro](ZERO_COST_KOKORO.md).
+> The earlier notes below describe the experimental local deployment
+> and the older browser-speech fallback, not the current default.
+
+
 Open `/dual-lab/voice/` from the new Voice Lab link in the dual lab. This is an isolated experimental interface: the existing text chat, personas, retrieval, backends, traces, evaluation data, and deployment routes are unchanged.
 
 ## Architecture
