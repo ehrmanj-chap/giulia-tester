@@ -73,6 +73,12 @@ class VoiceService:
         config = load_config(str(CONFIG_PATH))
         if not config.get("voices"):
             raise RuntimeError("No original Giulia/Mei voice profiles configured.")
+        configured_agents = {p.get("agent") for p in config["voices"]}
+        if not {"giulia", "mei"}.issubset(configured_agents):
+            raise RuntimeError("Original Giulia AND Mei voice profiles must both be configured.")
+        if any(p.get("reference") for p in config["voices"]):
+            if not config.get("seedVc") or not Path(config["seedVc"]["root"]).is_dir():
+                raise RuntimeError("Private reference-conditioned voices need a mounted Seed-VC checkout.")
         for key in ("kokoroModel", "kokoroVoices"):
             if not config.get(key) or not Path(config[key]).is_file():
                 raise RuntimeError("Required private Kokoro asset missing.")
