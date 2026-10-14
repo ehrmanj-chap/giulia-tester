@@ -9,7 +9,7 @@ export async function callAgent(agent, messages, { signal } = {}) {
   const connection = loadConnections()[agent];
   if (!connection?.base) throw Error(`Connect ${agent} in the text lab's Internal lab tools first.`);
   const res = await fetch(endpointUrl(connection.base, '/api/chat'), { method: 'POST', signal: combinedSignal(signal, 240000),
-    headers: { 'Content-Type': 'application/json', ...(connection.token ? { 'X-Giulia-Lab-Token': connection.token } : {}) },
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/x-ndjson, application/json', ...(connection.token ? { 'X-Giulia-Lab-Token': connection.token } : {}) },
     body: JSON.stringify({ messages }) });
   const type = res.headers.get('content-type') || '';
   if (type.includes('application/x-ndjson')) {
