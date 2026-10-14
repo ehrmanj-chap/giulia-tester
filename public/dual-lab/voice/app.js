@@ -5,6 +5,7 @@ import { BrowserSpeech, hasBrowserRecognition } from './browser-speech.js';
 import { OnDeviceKokoro } from './browser-kokoro.js';
 import { PRESETS } from './presets.js';
 import { languageAwareSpeechSegments, spokenLanguages } from './language-detect.js';
+import { playKokoroSpeech } from './speech-buffer.js';
 const $ = selector => document.querySelector(selector);
 const player = new AudioPlayer();
 let gateway, capabilities, session, loopRunning = false, lastClip, ttsController, uiEpoch = 0, ttsBusy = false;
@@ -122,6 +123,36 @@ async function renderSpeech(turn, { signal } = {}) {
     turn.timings.audioWallMs = performance.now() - started;
     turn.audioStatus = 'complete'; render();
     return;
+  }
+  if(gateway.kind==='ondevice'){
+    turn.audioStatus='preparing';render();
+    const output=await playKokoroSpeech({
+      segments, provider:gateway, voice, speech:turn.ttsParameters,
+      play:(blob,options)=>player.play(blob,options), signal,
+      onStatus:message=>{turn.audioStatus=message;render();},
+      onClip:(clip,spans)=>{
+        turn.audio.push(clip);
+        turn.chunks.push({
+          text:spans.map(span=>span.text).join(''),
+          languages:[...new Set(spans.map(span=>span.language))],
+          fused:spans.length>1,
+          generationMs:clip.generationMs, phonemizationMs:clip.phonemizationMs,
+          inferenceMs:clip.inferenceMs, durationMs:clip.durationMs,
+        });
+      },
+      onPlaying:()=>{
+        turn.audioStatus='playing';
+        if(first){turn.timings.firstAudioMs=performance.now()-started;first=false;}
+        render();
+      },
+    });
+    turn.timings.ttsMs=output.generationMs;
+    turn.timings.phonemizationMs=output.phonemizationMs;
+    turn.timings.inferenceMs=output.inferenceMs;
+    turn.timings.betweenClipsGapMs=output.gapMs;
+    turn.timings.audioWallMs=performance.now()-started;
+    turn.fusionFallbacks=output.fusionFallbacks;
+    turn.audioStatus='complete';render();return;
   }
   const synthesize = segment => gateway.synthesize({ ...segment, voice, speech: turn.ttsParameters }, { signal });
   // One-chunk lookahead: inference overlaps playback, while preserving playback order.

@@ -236,6 +236,112 @@ export class OnDeviceKokoro {
     }
     return this.voiceCache.get(name);
   }
+  /**
+   * Merge short differently phonemized spans into ONE ONNX inference.
+   *
+   * Kokoro generates a continuous waveform from a phoneme-token sequence.
+   * Previously a language switch triggered a new (sometimes ~20s on CPU)
+   * inference after the previous audio ended. Here English, Italian and
+   * Japanese G2P still run locally, but the resulting token IDs are joined
+   * before inference, preserving the selected Giulia/Mei style vector.
+   * Long utterances are intentionally not fused beyond Kokoro's token limit.
+   */
+  synthesizeMixed({ segments, voice, speech = {} }, { signal } = {}) {
+    const task = this.queue.then(() => this._synthesizeMixed({ segments, voice, speech }, signal));
+    this.queue = task.catch(() => {});
+    return task;
+  }
+  async _synthesizeMixed({ segments, voice, speech }, signal) {
+    requireActive(signal);
+    if (!Array.isArray(segments) || segments.length < 2 || segments.length > 12) {
+      throw Error('Language fusion requires 2–12 spoken spans.');
+    }
+    const mergedText = segments.map(s => s?.text || '').join('');
+    if (!mergedText.trim() || mergedText.length > 210 ||
+        segments.some(s => typeof s?.text !== 'string' || !s.text.trim() ||
+          s.text.length > MAX_CHUNK || !BROWSER_KOKORO_LANGUAGES.includes(s.language))) {
+      throw Error('Language fusion requires 210 characters or fewer with supported speech languages.');
+    }
+    const profile = SEED_PROFILES[voice];
+    if (!profile) throw Error('Unknown Giulia/Mei seed voice.');
+    const speed = Number(speech?.pace ?? 1);
+    if (!Number.isFinite(speed) || speed < 0.6 || speed > 1.5) throw Error('Invalid speaking pace.');
+    const preparedStarted = performance.now();
+    const model = await this.getModel();
+    requireActive(signal);
+    const voices = new Map(await Promise.all(profile.styles.map(async entry => [entry.name, await this.getStyle(entry.name)])));
+    requireActive(signal);
+    const phonemeStarted = performance.now();
+    const previous = model.generate_from_ids;
+    const inputTensors = [];
+    try {
+      // In kokoro-js@1.2.1, generate()/kokoro-js-jp.speak() both call
+      // generate_from_ids() AFTER language-specific phonemization/tokenizing.
+      // Intercept those input IDs without running separate model inferences.
+      model.generate_from_ids = async input_ids => input_ids;
+      for (const segment of segments) {
+        requireActive(signal);
+        let tokens;
+        if (segment.language === 'it') {
+          const italian = await this.getItalian();
+          const phonemes = normalizeItalianIPA(italian.textToIpa(segment.text));
+          tokens = model.tokenizer(phonemes, { truncation: true }).input_ids;
+        } else if (segment.language === 'ja') {
+          const japanese = await this.getJapanese();
+          tokens = await japanese.speak(segment.text, 'jf_alpha', speed);
+        } else {
+          tokens = await model.generate(segment.text, {
+            voice: segment.language === 'en-gb' ? 'bf_emma' : 'af_heart', speed,
+          });
+        }
+        if (!tokens?.data || tokens.data.length < 2 || !tokens.dims) {
+          throw Error('Language phonemizer returned incompatible Kokoro token IDs.');
+        }
+        inputTensors.push(tokens);
+      }
+    } finally {
+      model.generate_from_ids = previous; // Never leave the model in capture mode.
+    }
+    requireActive(signal);
+    // Drop each sequence's BOS/EOS padding; restore a single BOS/EOS pair.
+    // This avoids three expensive ONNX calls for a three-language sentence.
+    const first = inputTensors[0], Data = first.data.constructor;
+    const ids = [];
+    for (const t of inputTensors) {
+      if (t.type !== first.type || t.data.constructor !== Data) {
+        throw Error('Inconsistent Kokoro tokenizer IDs across languages.');
+      }
+      ids.push(...t.data.slice(1, -1));
+    }
+    if (!ids.length || ids.length > MAX_TOKENS) {
+      throw Error('Combined phonemes exceed Kokoro 510-token limit; shorter clips required.');
+    }
+    const packed = new Data(ids.length + 2);
+    packed[0] = first.data[0];
+    packed.set(ids, 1);
+    packed[packed.length - 1] = first.data[first.data.length - 1];
+    const Tensor = first.constructor, input_ids = new Tensor(first.type, packed, [1, packed.length]);
+    const phonemizationMs = performance.now() - phonemeStarted;
+    const inferenceStarted = performance.now();
+    const style = blendStyleRow(profile.styles, voices, ids.length);
+    const { waveform } = await model.model({
+      input_ids,
+      style: new Tensor('float32', style, [1, STYLE_DIM]),
+      speed: new Tensor('float32', new Float32Array([speed]), [1]),
+    });
+    const inferenceMs = performance.now() - inferenceStarted;
+    requireActive(signal);
+    if (!waveform?.data?.length) throw Error('Kokoro fused synthesis produced no waveform.');
+    const blob = encodePcm16Wav(waveform.data, SAMPLE_RATE);
+    return {
+      blob, backend: 'kokoro-on-device',
+      generationMs: performance.now() - preparedStarted,
+      phonemizationMs, inferenceMs,
+      durationMs: waveform.data.length * 1000 / SAMPLE_RATE,
+      fusedLanguages: segments.map(part => part.language),
+      segmentCount: segments.length,
+    };
+  }
   synthesize({ text, voice, language = 'en-us', speech = {} }, { signal } = {}) {
     const task = this.queue.then(() => this._synthesize({ text, voice, language, speech }, signal));
     this.queue = task.catch(() => {}); // serialize GPU/CPU operations, even across failed requests
@@ -269,14 +375,17 @@ export class OnDeviceKokoro {
       const tokens = Math.max(0, (input_ids.dims.at(-1) || 2) - 2);
       const Tensor = input_ids.constructor;
       const style = blendStyleRow(profile.styles, byName, tokens);
+      const modelStarted = performance.now();
       const result = await model.model({
         input_ids,
         style: new Tensor('float32', style, [1, STYLE_DIM]),
         speed: new Tensor('float32', new Float32Array([Number(options.speed || speed)]), [1]),
       });
+      inferenceMs += performance.now() - modelStarted;
       return { data: result.waveform?.data, sampling_rate: SAMPLE_RATE };
     };
     const started = performance.now();
+    let inferenceMs = 0;
     try {
       let audio;
       if(language === 'it'){
@@ -298,7 +407,8 @@ export class OnDeviceKokoro {
       const blob = encodePcm16Wav(audio.data, SAMPLE_RATE);
       return {
         blob, backend: 'kokoro-on-device', generationMs: performance.now() - started,
-        durationMs: audio.data.length / SAMPLE_RATE * 1000,
+        phonemizationMs: Math.max(0, performance.now() - started - inferenceMs),
+        inferenceMs, durationMs: audio.data.length / SAMPLE_RATE * 1000,
       };
     } finally {
       model.generate_from_ids = originalGenerate;

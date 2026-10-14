@@ -4,6 +4,7 @@ import { VoiceGateway } from './voice/clients.js';
 import { AudioPlayer } from './voice/audio.js';
 import { OnDeviceKokoro } from './voice/browser-kokoro.js';
 import { languageAwareSpeechSegments } from './voice/language-detect.js';
+import { playKokoroSpeech } from './voice/speech-buffer.js';
 const $ = s => document.querySelector(s);
 const AGENTS = {
   giulia:{name:'Giulia',label:'Giulia (Italy Expert)',country:'ITALY',description:'Italian cultural and business intelligence',welcome:'Ciao! What would you like to explore about life, culture, or business in Italy?'},
@@ -44,17 +45,32 @@ async function playReadout(text, agent){
     const language=$('#readoutLanguage').value;
     const voice=mode==='gateway'?$('#'+agent+'ReadoutVoice').value:agent+'-blend';
     if(mode==='gateway'&&!voice)throw Error('Missing configured '+AGENTS[agent].name+' gateway voice.');
-    for(const chunk of languageAwareSpeechSegments(text,language)){
-      if(controller.signal.aborted)break;
-      if(mode==='browser'){
-        await readout.speak({text:chunk.text,language:chunk.language,voice:'browser:default',speech:{pace:1}},{signal:controller.signal});
-      }else{
-        const provider=mode==='ondevice'?onDeviceReadout:readoutGateway;
-        const clip=await provider.synthesize({text:chunk.text,language:chunk.language,voice,speech:{pace:1}},{signal:controller.signal});
-        await readoutPlayer.play(clip.blob,{signal:controller.signal});
+    const segments=languageAwareSpeechSegments(text,language);
+    if(mode==='ondevice'){
+      const summary=await playKokoroSpeech({
+        segments, provider:onDeviceReadout, voice, speech:{pace:1},
+        play:(blob,options)=>readoutPlayer.play(blob,options), signal:controller.signal,
+        onStatus:message=>{if(epoch===readoutEpoch)$('#readoutStatus').textContent=message;},
+      });
+      if(epoch===readoutEpoch){
+        $('#readoutStatus').textContent='Finished · '+summary.clips+' Kokoro clips · '
+          +'phonemes '+(summary.phonemizationMs/1000).toFixed(1)+'s · '
+          +'model '+(summary.inferenceMs/1000).toFixed(1)+'s · '
+          +'gaps '+(summary.gapMs/1000).toFixed(1)+'s'
+          +(summary.fusionFallbacks?' · '+summary.fusionFallbacks+' compatibility fallbacks':'');
       }
+    }else{
+      for(const chunk of segments){
+        if(controller.signal.aborted)break;
+        if(mode==='browser'){
+          await readout.speak({text:chunk.text,language:chunk.language,voice:'browser:default',speech:{pace:1}},{signal:controller.signal});
+        }else{
+          const clip=await readoutGateway.synthesize({text:chunk.text,language:chunk.language,voice,speech:{pace:1}},{signal:controller.signal});
+          await readoutPlayer.play(clip.blob,{signal:controller.signal});
+        }
+      }
+      if(epoch===readoutEpoch)$('#readoutStatus').textContent='Finished reading';
     }
-    if(epoch===readoutEpoch)$('#readoutStatus').textContent='Finished reading';
   }catch(failure){
     if(epoch===readoutEpoch)$('#readoutStatus').textContent=failure.name==='AbortError'?'Speech stopped':('Speech failed: '+failure.message);
   }
