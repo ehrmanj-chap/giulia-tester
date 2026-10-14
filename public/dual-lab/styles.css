@@ -38,3 +38,10 @@ button.read-reply:hover{background:#f4e8eb}
 .readout-source{display:inline-flex;align-items:center;gap:.45rem;font:12px system-ui,sans-serif}
 .readout-source select{max-width:250px;width:auto;margin:0;padding:.35rem .55rem;font:12px system-ui,sans-serif}
 @media(max-width:650px){.readout-source{width:100%;flex-wrap:wrap}.readout-source select{max-width:100%;width:100%}}
+
+
+/* Loading feedback belongs on the landing page, not only inside the hidden chat. */
+.lab-nav{align-items:center;gap:.9rem;flex-wrap:wrap}
+.voice-warmup-status{font:12px/1.45 system-ui,sans-serif;color:var(--muted);max-width:310px;text-align:right}
+#testReadout{white-space:nowrap;padding:.4rem .6rem;font:12px system-ui,sans-serif}
+@media(max-width:650px){.voice-warmup-status{text-align:left;max-width:none;width:100%}}
