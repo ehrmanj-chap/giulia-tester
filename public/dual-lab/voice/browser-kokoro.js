@@ -24,6 +24,15 @@ const SAMPLE_RATE = 24000;
 const MAX_TOKENS = 509;
 const MAX_CHUNK = 260;
 
+// A fused waveform that is too short for its transcript is almost certainly
+// truncated. This conservative lower bound errs toward accepting fast speech.
+export function minimumReasonableSpeechMs(segments, speed = 1) {
+  const text = segments.map(s => s.text).join('');
+  const japanese = (text.match(/[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}々ー]/gu) || []).length;
+  const latin = (text.match(/\p{Script=Latin}/gu) || []).length;
+  return Math.max(400, Math.min(9500, (latin * 28 + japanese * 95) / speed));
+}
+
 // These are the existing checked-in seed BLENDS, not unrecoverable private reference voices.
 export const SEED_PROFILES = Object.freeze({
   'giulia-blend': Object.freeze({
@@ -307,10 +316,20 @@ export class OnDeviceKokoro {
     // This avoids three expensive ONNX calls for a three-language sentence.
     const first = inputTensors[0], Data = first.data.constructor;
     const ids = [];
-    for (const t of inputTensors) {
+    // Fusing adjacent token sequences without a prosodic boundary yielded
+    // unnaturally run-together speech. Use Kokoro's own IPA punctuation token
+    // for a brief linguistic breath, still making only one ONNX model call.
+    const separator = model.tokenizer('…', { truncation: true }).input_ids;
+    const pauseTokens = separator?.data?.slice(1, -1);
+    if (!pauseTokens?.length || pauseTokens.length > 4 ||
+        [...pauseTokens].some(id => !id)) {
+      throw Error('Kokoro punctuation token unavailable; use safe per-phrase synthesis.');
+    }
+    for (const [index, t] of inputTensors.entries()) {
       if (t.type !== first.type || t.data.constructor !== Data) {
         throw Error('Inconsistent Kokoro tokenizer IDs across languages.');
       }
+      if (index > 0) ids.push(...pauseTokens);
       ids.push(...t.data.slice(1, -1));
     }
     if (!ids.length || ids.length > MAX_TOKENS) {
@@ -332,12 +351,22 @@ export class OnDeviceKokoro {
     const inferenceMs = performance.now() - inferenceStarted;
     requireActive(signal);
     if (!waveform?.data?.length) throw Error('Kokoro fused synthesis produced no waveform.');
+    const actualDurationMs = waveform.data.length * 1000 / SAMPLE_RATE;
+    const minimumMs = minimumReasonableSpeechMs(segments, speed);
+    if (actualDurationMs < minimumMs) {
+      // Prevent a truncated "Buon..." waveform from being presented as a
+      // complete spoken reply. Our scheduler will regenerate each phrase
+      // using the standard Kokoro path and buffer it before playback.
+      throw Error('Incomplete Kokoro fusion: generated '+Math.round(actualDurationMs)
+        +'ms for speech needing at least '+Math.round(minimumMs)+'ms.');
+    }
     const blob = encodePcm16Wav(waveform.data, SAMPLE_RATE);
     return {
       blob, backend: 'kokoro-on-device',
       generationMs: performance.now() - preparedStarted,
       phonemizationMs, inferenceMs,
-      durationMs: waveform.data.length * 1000 / SAMPLE_RATE,
+      durationMs: actualDurationMs,
+      insertedPauseTokens: pauseTokens.length,
       fusedLanguages: segments.map(part => part.language),
       segmentCount: segments.length,
     };
