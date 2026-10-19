@@ -1,6 +1,18 @@
-# Giulia Local
+# Giulia tester: internal cultural-agent lab
 
-Private, localhost-first prototype for one visible Giulia backed by three internal Qwen roles:
+> **Maintainers: start here.** This is the **internal engineering and evaluation laboratory** for Giulia (Italy) and Mei (Japan), including hosted Qwen backends, test corpora, the dual-agent interface and experimental voice tools. It is **not** the public Chapman cultural-agents site. The public-facing site is [chapman-cultural-agents](https://github.com/ehrmanj-chap/chapman-cultural-agents) and currently embeds **Relevance AI** agents. AI Garage's beginner workshops are at [agentics_labs_lectures](https://github.com/ehrmanj-chap/agentics_labs_lectures).
+
+**Two paths for two audiences:**
+- **Kelsie / student facilitator with no coding setup:** [Browser-only GitHub Actions guide](docs/KELSIE_QUICKSTART.md). Begin with the **mock** (no-model-cost) demo test. Changing prompts and running paid-provider tests requires appropriate repo access and approval.
+- **Technical maintainer:** Continue to the local setup, source manifests, evaluation commands and debugging instructions below. Only change code, cloud configuration or prompts on a reviewed branch.
+
+**Repository access:** The GitHub repository is **public as of October 2026**, which means anyone can read the source code, not that anyone can edit the repo or operate the live lab. Kelsie needs appropriate collaborator permission (and durable administrator coverage). Live Vercel deployments may require authorization and their status is **not** established merely by a successful build.
+
+**Provider/security boundary:** Hosted Qwen calls have separate provider credentials and potential usage charges. Do not share API keys in README files, chat messages or commits. Browser-side Kokoro speech synthesis does **not** pay for or replace the hosted language models. Saanvi research exists in Drive but is **not documented here as a verified deployed agent**.
+
+## Local architecture reference
+
+A localhost-first prototype for one visible Giulia backed by three internal Qwen roles:
 
 ```text
 User → Router Giulia
@@ -11,7 +23,7 @@ User → Router Giulia
 
 ## Browser-only collaborator quick start
 
-**No local setup is required to test hosted Giulia.** A collaborator with access to this private repository can sign into a normal GitHub.com account, run the hosted Qwen tester from GitHub Actions, edit prompts on a branch, and download complete evaluation artifacts without seeing or copying the DashScope credentials.
+**No local setup is required to test hosted Giulia.** A collaborator with appropriate GitHub permissions can sign into a normal GitHub.com account, run the hosted Qwen tester from GitHub Actions, edit prompts on a branch, and download complete evaluation artifacts without seeing or copying the DashScope credentials.
 
 Start here: **[`docs/KELSIE_QUICKSTART.md`](docs/KELSIE_QUICKSTART.md)**
 

@@ -1,33 +1,27 @@
-# Kelsie Quick Start - Giulia GitHub Tester
+# Kelsie quick start: internal Giulia/Mei tester
 
-This repo can be used entirely in the browser. You do not need to install Node.js, Ollama, Qwen, or Alibaba Cloud, and you do not need the DashScope API key.
+> **This is the internal experiment and evaluation repo, not the public visitor site.** The public cultural-agent webpage lives at [chapman-cultural-agents](https://github.com/ehrmanj-chap/chapman-cultural-agents) and embeds Relevance AI; the [AI Garage lessons](https://github.com/ehrmanj-chap/agentics_labs_lectures) are separate again. The GitHub Actions evaluator can be operated from a browser. It does not require you to install Node.js, Ollama or Qwen locally.
 
 ## Access
 
-- Repository: https://github.com/ehrmanj-chap/giulia-tester
-- Actions tester: https://github.com/ehrmanj-chap/giulia-tester/actions/workflows/eval.yml
+- Repository (source currently **public**): https://github.com/ehrmanj-chap/giulia-tester
+- GitHub Actions tester: https://github.com/ehrmanj-chap/giulia-tester/actions/workflows/eval.yml
 - Prompt folder: https://github.com/ehrmanj-chap/giulia-tester/tree/main/prompts
-- 120-case evaluation corpus: https://github.com/ehrmanj-chap/giulia-tester/tree/main/evals/corpus-v1
-- Upload inbox: https://github.com/ehrmanj-chap/giulia-tester/tree/main/evals/inbox
+- 120-case Giulia routing evaluation corpus: https://github.com/ehrmanj-chap/giulia-tester/tree/main/evals/corpus-v1
+- Question upload inbox: https://github.com/ehrmanj-chap/giulia-tester/tree/main/evals/inbox
+- Internal dual lab source: https://github.com/ehrmanj-chap/giulia-tester/tree/main/public/dual-lab
 
-Because the repository is private, the GitHub account you use must first be invited as a collaborator. Any normal GitHub.com account is fine. After you accept the invitation, that same account can view the repo, edit files, create branches, run the Action, and download test artifacts.
+**Anyone can read the repository.** Kelsie must be invited to GitHub with her **own GitHub username** and appropriate repository permission to edit/merge changes and run the manual Actions workflow. The source code being public does **not** mean GitHub Actions secrets, Vercel settings or the Qwen provider account are public. Ask the GitHub repository administrator to confirm this access, rather than using someone else's account.
 
-## First test: no file edits
+## Safest first run: no provider cost
 
-1. Open the **Actions tester** link above.
-2. Click **Run workflow**.
-3. Leave **Use workflow from** set to `main`.
-4. For `source_file`, enter:
+1. Open the **GitHub Actions tester** link while signed into an account with permission.
+2. Click **Run workflow** and leave **Use workflow from** on `main`.
+3. Enter `evals/examples/meeting-demo.json` for `source_file`.
+4. Choose **mock** as provider and **1** as concurrency, then **Run workflow**.
+5. Open the new run. If it succeeds, download its artifact and review the result.
 
-   `evals/examples/meeting-demo.json`
-
-5. Set provider to `qwen`.
-6. Set concurrency to `4`.
-7. Click **Run workflow**.
-8. Open the new run when it appears.
-9. When it finishes, scroll to **Artifacts** and download `giulia-batch-...`.
-
-The artifact includes a CSV, full JSON report, Markdown summary, and forensic traces.
+Mock runs check wiring and predictable test responses; **they do not prove real-agent factual quality**. After the project owner verifies model account ownership/billing and hosted configuration, repeat a **small** test using `qwen` to evaluate real model outputs. Never paste a DashScope API key into GitHub files or chat.
 
 ## Run the complete evaluation corpus
 
@@ -92,7 +86,7 @@ Important boundary example: “What if the meeting is with a family-owned suppli
 
 ## Credentials and security
 
-The hosted Qwen credentials are already stored in GitHub Actions secrets. You should never need to see, copy, or paste the DashScope API key. The Action uses it automatically.
+The hosted Qwen workflow expects credentials in GitHub Actions secrets. Only authorized maintainers can verify whether those are currently configured and valid. You should never need to see, copy, or paste the DashScope API key. The Action uses it automatically.
 
 Do not add API keys to source files, prompts, test files, commits, issues, or pull requests.
 
@@ -107,4 +101,4 @@ Check these in order:
 5. Open the failed step for the exact error.
 6. Send the run link or downloaded artifact to Jordan if you want a second look.
 
-A workflow failure does not expose the API key in normal logs; GitHub masks configured secret values.
+GitHub normally masks configured secret values, but avoid deliberately printing tokens, URLs with embedded credentials, or private prompts in logs.
