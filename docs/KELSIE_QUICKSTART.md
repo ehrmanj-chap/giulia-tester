@@ -16,12 +16,12 @@
 ## Safest first run: no provider cost
 
 1. Open the **GitHub Actions tester** link while signed into an account with permission.
-2. Click **Run workflow** and leave **Use workflow from** on \`main\`.
-3. Enter \`evals/examples/meeting-demo.json\` for \`source_file\`.
+2. Click **Run workflow** and leave **Use workflow from** on `main`.
+3. Enter `evals/examples/meeting-demo.json` for `source_file`.
 4. Choose **mock** as provider and **1** as concurrency, then **Run workflow**.
 5. Open the new run. If it succeeds, download its artifact and review the result.
 
-Mock runs check wiring and predictable test responses; **they do not prove real-agent factual quality**. After the project owner verifies model account ownership/billing and hosted configuration, repeat a **small** test using \`qwen\` to evaluate real model outputs. Never paste a DashScope API key into GitHub files or chat.
+Mock runs check wiring and predictable test responses; **they do not prove real-agent factual quality**. After the project owner verifies model account ownership/billing and hosted configuration, repeat a **small** test using `qwen` to evaluate real model outputs. Never paste a DashScope API key into GitHub files or chat.
 
 ## Run the complete evaluation corpus
 
